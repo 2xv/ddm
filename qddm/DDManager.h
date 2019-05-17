@@ -187,6 +187,7 @@ private:
     bool                   compareArray         (int type, const void *array1, void *array2);
     bool                   compareList          (DDList  *list1, DDList *list2);
 
+    void                   checkRequired        ();
     const void           **linkObject           (int id, void **obj);
     void                  *seekObject           (int id, void **obj);
     void                   storeData            (int id, const  void *data, int type);

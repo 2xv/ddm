@@ -894,6 +894,62 @@ bool DDManager::compareList (DDList *list1, DDList *list2)
     return true;
 }
 
+//  +---------------+
+//  | checkRequests |
+//  +---------------+
+
+void DDManager::checkRequired ()
+{
+    QVector <DDProps>  *propsTable;
+    DDList             *list;
+    DDProps            *p;
+    int                 i, j, k, x;
+    void               *data;
+    void              **objTable1, **objTable2;
+
+    for (i = 0; i < 16; i++)    // Check Required Flag
+    {
+        if (!(objTable1 = static_cast <void **> (propertiesRoot [i]))) continue;
+
+        for (j = 0; j < 16; j++)
+        {
+            if (!(objTable2 = static_cast <void **> (objTable1 [j]))) continue;
+
+            for (k = 0; k < 16; k++)
+            {
+                if (!(data = objTable2 [k])) continue;
+                x =  (i << 8) | (j << 4) | k;
+
+                if ((static_cast <DDProps *> (data)->operType & DDC_REQ) > 0 && dataTypes [x] == DDC_NULL)
+                     DDException (DDE_MISSING_DATA, x, static_cast <DDProps *> (data)->name);
+
+                if (dataTypes [x] != DDC_LIST)  continue;
+                list = static_cast  <DDList *> (seekObject (x, dataRoot));
+
+                propsTable = list->getProperties ();
+                if (!propsTable) DDException (DDE_LIST_PROPERTIES_NOT_FOUND, static_cast <DDProps *> (data)->id);
+
+                x = propsTable->size ();
+                list->begin ();
+
+                while (!list->isEndOfList ())
+                {
+                    p = &propsTable->data () [list->getCurrentDataOffset () % x];
+
+                    if ((p->operType & DDC_REQ) && list->getCurrentDataType () == DDC_NULL)
+                         DDException (DDE_MISSING_DATA, p->id, p->name);
+
+                    list->next ();
+                }
+
+                for (x = list->getDataNumber (); x < propsTable->size (); x++)
+                     if ((propsTable->data () [x].operType & DDC_REQ))
+                          DDException (DDE_MISSING_DATA, propsTable->data () [x].id, propsTable->data () [x].name);
+            }
+        }
+    }
+}
+
 //  #========#
 //  # decode #
 //  #========#
@@ -937,6 +993,8 @@ void DDManager::decode (QByteArray &buffer, int offset, int length, bool checkPr
         obj = ddBuffer.read (type);
         storeData (id & 0xFFF, obj, type);
     }
+
+    if (propertiesNumber) checkRequired ();
 }
 
 //  +------------+
@@ -1017,60 +1075,13 @@ void DDManager::encode (QByteArray &buffer, int reservedSizeBefore, int reserved
     QByteArray tempBuffer (4096, 0);
     DDBuffer   ddBuffer   (tempBuffer, 0, 4096, &newObjectList);
 
-    if (addProtocolInfo) ddBuffer.addProtocolInfo ();
+    if (addProtocolInfo)  ddBuffer.addProtocolInfo ();
+    if (propertiesNumber) checkRequired ();
 
-    int                 i, j, k, x;
-    void               *data;
-    void              **objTable1, **objTable2;
-    QVector <DDProps>  *propsTable;
-    DDList             *list;
-    DDProps            *p;
-
-    if (propertiesNumber)
-        for (i = 0; i < 16; i++)    // Check Required Flag
-        {
-            if (!(objTable1 = static_cast <void **> (propertiesRoot [i]))) continue;
-
-            for (j = 0; j < 16; j++)
-            {
-                if (!(objTable2 = static_cast <void **> (objTable1 [j]))) continue;
-
-                for (k = 0; k < 16; k++)
-                {
-                    if (!(data = objTable2 [k])) continue;
-                    x =  (i << 8) | (j << 4) | k;
-
-                    if ((static_cast <DDProps *> (data)->operType & DDC_REQ) > 0 && dataTypes [x] == DDC_NULL)
-                         DDException (DDE_MISSING_DATA, x, static_cast <DDProps *> (data)->name);
-
-                    if (dataTypes [x] != DDC_LIST)  continue;
-                    list = static_cast  <DDList *> (seekObject (x, dataRoot));
-
-                    propsTable = list->getProperties ();
-                    if (!propsTable) DDException (DDE_LIST_PROPERTIES_NOT_FOUND, static_cast <DDProps *> (data)->id);
-
-                    x = propsTable->size ();
-                    list->begin ();
-
-                    while (!list->isEndOfList ())
-                    {
-                        p = &propsTable->data () [list->getCurrentDataOffset () % x];
-
-                        if ((p->operType & DDC_REQ) != 0 && list->getCurrentDataType () == DDC_NULL)
-                             DDException (DDE_MISSING_DATA, p->id, p->name);
-
-                        list->next ();
-                    }
-
-                    for (x = list->getDataNumber (); x < propsTable->size (); x++)
-                        if ((propsTable->data () [x].operType & DDC_REQ) != 0)
-                             DDException (DDE_MISSING_DATA, propsTable->data () [x].id, propsTable->data () [x].name);
-                }
-            }
-        }
-
-    DDProps *props;
-    int      y;
+    int       i, j, k, x, y;
+    void     *data;
+    void    **objTable1, **objTable2;
+    DDProps  *props;
 
     for (i = 0; i < 16; i++)
     {

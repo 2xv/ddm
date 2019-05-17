@@ -373,7 +373,8 @@ int main (int argc, char **argv)
             continue;
         }
 
-        f_sub_props = **bp == '-' && !bp [0][1];
+        if ((**bp != '+' && **bp != '-') || bp [0][1]) continue;
+        f_sub_props = **bp == '+';
 // name
         if (bpm < col_name || !*bp [col_name] || *bp [col_name] == '#')
             guty_abort (caller_name, GA_ERROR | GA_VALUE | GA_LINE, EINVAL, "Missing name", cnt);
@@ -725,7 +726,7 @@ int main (int argc, char **argv)
 
         fprintf (fj, "    };\n");
 
-        for (p_work = p_first; p_work; p_work = p_work->next)
+        for (p_work = p_first; p_work; )
             if (p_work->operTypeId == 13)
             {
                 if (!p_work->next || !p_work->next->f_sub_props)
@@ -740,6 +741,8 @@ int main (int argc, char **argv)
                 for (p_work = p_work->next; p_work && p_work->f_sub_props; p_work = p_work->next) write_java_props ();
                 fprintf (fj, "    };\n");
             }
+            else
+                p_work = p_work->next;
 
         fprintf (fj, "}\n");
         fclose (fj);
@@ -782,7 +785,7 @@ int main (int argc, char **argv)
 
         fprintf (fq, "};\n");
 
-        for (p_work = p_first; p_work; p_work = p_work->next)
+        for (p_work = p_first; p_work; )
             if (p_work->operTypeId == 13)
             {
                 if (!p_work->next || !p_work->next->f_sub_props)
@@ -804,6 +807,8 @@ int main (int argc, char **argv)
 
                 fprintf (fq, "};\n");
             }
+            else
+                p_work = p_work->next;
 
         fclose  (fq);
     }

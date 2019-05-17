@@ -789,6 +789,64 @@ public final class DDManager
         return true;
     }
 
+//  +---------------+
+//  | checkRequired |
+//  +---------------+
+
+    private void checkRequired () throws DDException
+    {
+        DDProps [] propsTable;
+        DDList     list;
+        int        i, j, k, x;
+        Object     data;
+        Object  [] objTable1, objTable2;
+        DDProps    props;
+
+        for (i = 0; i < 16; i++)      // Check Required Flag
+        {
+            if ((objTable1 = (Object [])(propertiesRoot [i])) == null) continue;
+
+            for (j = 0; j < 16; j++)
+            {
+                if ((objTable2 = (Object [])(objTable1 [j])) == null) continue;
+
+                for (k = 0; k < 16; k++)
+                {
+                    if ((data = objTable2 [k]) == null) continue;
+                    x = (i << 8) | (j << 4) | k;
+
+                    if ((((DDProps) data).operType & DDConst.REQ) > 0 && dataTypes [x] == DDConst.NULL)
+                        throw new DDException (DDError.MISSING_DATA.getMessage (x, ((DDProps) data).name));
+
+                    if (dataTypes [x] != DDConst.LIST) continue;
+
+                    list = (DDList) seekObject (x, dataRoot);
+                    propsTable = list.getProperties ();
+
+                    if (propsTable == null)
+                        throw new DDException (DDError.LIST_PROPERTIES_NOT_FOUND.getMessage (((DDProps) data).id));
+
+                    x = propsTable.length;
+                    list.begin ();
+
+                    while (!list.isEndOfList ())
+                    {
+                        props = propsTable [list.getCurrentDataOffset () % x];
+
+                        if ((props.operType & DDConst.REQ) != 0 && list.getCurrentDataType () == DDConst.NULL)
+                            throw new DDException (DDError.MISSING_DATA.getMessage (props.id, props.name));
+
+                        list.next ();
+                    }
+
+                    for (x = list.getDataNumber (); x < propsTable.length; x++)
+                        if ((propsTable [x].operType & DDConst.REQ) != 0)
+                            throw new DDException (DDError.MISSING_DATA.getMessage (propsTable [x].id, propsTable [x].name));
+                }
+            }
+        }
+    }
+
 //  #========#
 //  # decode #
 //  #========#
@@ -830,6 +888,8 @@ public final class DDManager
             type [0] =  id >> 12;
             storeData  (id & 0xFFF, ddb.read (type), type [0]);
         }
+
+        if (propertiesNumber > 0) checkRequired ();
     }
 
 //  +------------+
@@ -909,61 +969,14 @@ public final class DDManager
             throw new DDException (DDError.INVALID_ENCODE_ARGUMENT.getMessage (reservedSizeBefore, reservedSizeAfter));
 
         DDBuffer DDBuffer = new DDBuffer (new byte [4096], 0, 4096);
+
         if (addProtocolInfo) DDBuffer.addProtocolInfo ();
+        if (propertiesNumber > 0) checkRequired ();
 
-        int        i, j, k, x;
-        Object     data;
-        Object  [] objTable1, objTable2;
-        DDProps [] propsTable;
-        DDList     list;
-        DDProps    props;
-
-        if (propertiesNumber > 0)
-            for (i = 0; i < 16; i++)      // Check Required Flag
-            {
-                if ((objTable1 = (Object [])(propertiesRoot [i])) == null) continue;
-
-                for (j = 0; j < 16; j++)
-                {
-                    if ((objTable2 = (Object [])(objTable1 [j])) == null) continue;
-
-                    for (k = 0; k < 16; k++)
-                    {
-                        if ((data = objTable2 [k]) == null) continue;
-                        x = (i << 8) | (j << 4) | k;
-
-                        if ((((DDProps) data).operType & DDConst.REQ) > 0 && dataTypes [x] == DDConst.NULL)
-                            throw new DDException (DDError.MISSING_DATA.getMessage (x, ((DDProps) data).name));
-
-                        if (dataTypes [x] != DDConst.LIST) continue;
-
-                        list = (DDList) seekObject (x, dataRoot);
-                        propsTable = list.getProperties ();
-
-                        if (propsTable == null)
-                            throw new DDException (DDError.LIST_PROPERTIES_NOT_FOUND.getMessage (((DDProps) data).id));
-
-                        x = propsTable.length;
-                        list.begin ();
-
-                        while (!list.isEndOfList ())
-                        {
-                            props = propsTable [list.getCurrentDataOffset () % x];
-
-                            if ((props.operType & DDConst.REQ) != 0 && list.getCurrentDataType () == DDConst.NULL)
-                                 throw new DDException (DDError.MISSING_DATA.getMessage (props.id, props.name));
-
-                            list.next ();
-                        }
-
-                        for (x = list.getDataNumber (); x < propsTable.length; x++)
-                             if ((propsTable [x].operType & DDConst.REQ) != 0)
-                                  throw new DDException (DDError.MISSING_DATA.getMessage (propsTable [x].id, propsTable [x].name));
-                    }
-                }
-            }
-
-        int y;
+        int       i, j, k, x, y;
+        Object    data;
+        Object [] objTable1, objTable2;
+        DDProps   props;
 
         for (i = 0; i < 16; i++)
         {
