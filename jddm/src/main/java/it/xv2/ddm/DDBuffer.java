@@ -2,6 +2,7 @@
 //  # Dynamic Data Buffer - Version 1.0.0 #
 //  #                                     #
 //  # Author: Marco Vagnoni               #
+//  # Email:  marco.vagnoni@yahoo.com     #
 //  # Date:   April     2019 (v1.0.0)     #
 //  #=====================================#
 
@@ -12,11 +13,11 @@
 //  Int             4b =3     12b Id    32b Data
 //  Long            4b =4     12b Id    64b Data
 
-//  Float           4b =5     12b Id    32b Data
-//  Double          4b =6     12b Id    64b Data
+//  Number          4b =5     12b Id     ?B Data
+//  SignedNumber    4b =6     12b Id     ?B Data
 
-//  Number          4b =7     12b Id     ?B Data
-//  SignedNumber    4b =8     12b Id     ?B Data
+//  Float           4b =7     12b Id    32b Data
+//  Double          4b =8     12b Id    64b Data
 
 //  Time            4b =9     12b Id     ?B(Data+1bMs) Data=( 5b Hour, 6b Min,   6b Sec, [10b Millis])
 //  Date            4b =10    12b Id     ?B Data       Data=(27b Year, 4b Month, 5b Day)
@@ -29,29 +30,25 @@
 
 //  List            4b =15    12b Id     ?B Size       1B Type1 + 2     Data1    Data2    ...
 
-//  ?B = DynamicNumber -> 1b Next (0=No,1=Yes) 7b Data ... (max 10 Bytes -> 7 * 10 = 70 (Used 64)) */
+//  ?B = DynamicNumber -> 1b Next (0=No,1=Yes) 7b Data ... (max 10 Bytes -> 7 * 10 = 70 (Used 64))
 
 package it.xv2.ddm;
 
-import java.util.Calendar;
-import java.util.Date;
 import java.util.zip.CRC32;
 
 final class DDBuffer
 {                                       //  0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15
-    final static char   [] DATA_TYPES   = {'-','b','s','i','I','f','F','n','N','t','d','D','B','S','A','L'};
+    final static char   [] DATA_TYPES   = {'z','b','s','i','I','n','N','f','F','t','d','D','B','S','A','L'};
     final static byte   [] MONTH_DAYS   = {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-    final static String [] STRING_TYPES = {"Null","Byte","Short","Integer","Long","Float","Double","Number",
-                                           "SignedNumber","Time","Date","DateTime","Bytes","String","Array","List"};
+    final static String [] STRING_TYPES = {"Null","Byte","Short","Integer","Long","Number","SignedNumber","Float",
+                                           "Double","Time","Date","DateTime","Bytes","String","Array","List"};
 
-    private final static Calendar calendar   = Calendar.getInstance ();
-    private final byte   []       tempBuffer = new byte [10];
-
-    private byte []   buffer;
-    private int       length;
-    private int       mark;
-    private int       offset;
-    private final int start;
+    private final byte  [] tempBuffer = new byte [10];
+    private byte        [] buffer;
+    private int            length;
+    private int            mark;
+    private int            offset;
+    private final int      start;
 
 //  #=============#
 //  # Constructor #
@@ -63,8 +60,6 @@ final class DDBuffer
         this.length = length;
         this.offset = offset;
         this.start  = offset;
-
-        calendar.setLenient (false);
     }
 
 //  #=====#
@@ -99,6 +94,20 @@ final class DDBuffer
         buffer  = newBuffer;
 
         return (offset + bytesNumber) <= length;
+    }
+
+//  +----------------+
+//  | unexpectedData |
+//  +----------------+
+
+    static void unexpectedData (int id, int expected, int found) throws DDException
+    {
+        int expectedIdH = expected >> 4;
+        int foundIdH    = found    >> 4;
+
+        throw new DDException (DDError.INVALID_DATA_TYPE.getMessage (id,
+            (expectedIdH == 0 ? "" : DDBuffer.STRING_TYPES [expectedIdH]) + DDBuffer.STRING_TYPES [expected & 0x0F],
+            (foundIdH    == 0 ? "" : DDBuffer.STRING_TYPES [foundIdH])    + DDBuffer.STRING_TYPES [found    & 0x0F]));
     }
 
 //  #=================#
@@ -161,17 +170,17 @@ final class DDBuffer
         int len = length - start - 4;
         if (len < 0) throw new DDException (DDError.BUFFER_OVERFLOW.getMessage (len, start, length - 4));
 
-        int crcReceived = ((buffer [length - 4] & 0xFF) << 24) | ((buffer [length - 3] & 0xFF) << 16) |
-                          ((buffer [length - 2] & 0xFF) <<  8) |  (buffer [length - 1] & 0xFF);
+        int crcFound = ((buffer [length - 4] & 0xFF) << 24) | ((buffer [length - 3] & 0xFF) << 16) |
+                       ((buffer [length - 2] & 0xFF) <<  8) |  (buffer [length - 1] & 0xFF);
 
         CRC32 crc32 = new CRC32 ();
         crc32.update (buffer, start, len);
  
         int crcExpected = (int) crc32.getValue ();
 
-        if (crcReceived != crcExpected)
+        if (crcFound != crcExpected)
             throw new DDException (DDError.INVALID_CRC.getMessage (Integer.toHexString (crcExpected),
-                                                                   Integer.toHexString (crcReceived)));
+                                                                   Integer.toHexString (crcFound)));
         length -= 4;
     }
 
@@ -179,7 +188,7 @@ final class DDBuffer
 //  # read #
 //  #======#
 
-    Object read (byte [] dataType) throws DDException
+    Object read (int [] dataType) throws DDException
     {
         switch (dataType [0] & 0x0F)
         {
@@ -216,113 +225,141 @@ final class DDBuffer
 
                 switch (itemType)
                 {
-                    case DDConst.BYTE:      for (obj = new byte [itemNumbers]; i < size; i++, bm <<= 1)
-                                            {
-                                                if ((i & 7)     == 0)   bm = readArrayBitmap();
-                                                if ((bm & 0x80) != 0) ((byte []) obj) [i] = readByte ();
-                                            }
+                    case DDConst.BYTE:
 
-                                            break;
+                        for (obj = new byte [itemNumbers]; i < size; i++, bm <<= 1)
+                        {
+                            if ((i & 7) == 0) bm = readArrayBitmap ();
+                            if ((bm & 0x80) != 0) ((byte []) obj) [i] = readByte ();
+                        }
 
-                    case DDConst.SHORT:     for (obj = new short [itemNumbers]; i < size; i++, bm <<= 1)
-                                            {
-                                                if ((i & 7)     == 0)   bm = readArrayBitmap();
-                                                if ((bm & 0x80) != 0) ((short []) obj) [i] = readShort ();
-                                            }
+                        break;
 
-                                            break;
+                    case DDConst.SHORT:
 
-                    case DDConst.INT:       for (obj = new int [itemNumbers]; i < size; i++, bm <<= 1)
-                                            {
-                                                if ((i & 7)     == 0)   bm = readArrayBitmap();
-                                                if ((bm & 0x80) != 0) ((int []) obj) [i] = readInt ();
-                                            }
+                        for (obj = new short [itemNumbers]; i < size; i++, bm <<= 1)
+                        {
+                            if ((i & 7) == 0) bm = readArrayBitmap ();
+                            if ((bm & 0x80) != 0) ((short []) obj) [i] = readShort ();
+                        }
 
-                                            break;
+                        break;
 
-                    case DDConst.LONG:      for (obj = new long [itemNumbers]; i < size; i++, bm <<= 1)
-                                            {
-                                                if ((i & 7)     == 0)   bm = readArrayBitmap();
-                                                if ((bm & 0x80) != 0) ((long []) obj) [i] = readLong ();
-                                            }
+                    case DDConst.INT:
 
-                                            break;
+                        for (obj = new int [itemNumbers]; i < size; i++, bm <<= 1)
+                        {
+                            if ((i & 7) == 0) bm = readArrayBitmap ();
+                            if ((bm & 0x80) != 0) ((int []) obj) [i] = readInt ();
+                        }
 
-                    case DDConst.FLOAT:     for (obj = new float [itemNumbers]; i < size; i++, bm <<= 1)
-                                            {
-                                                if ((i & 7)     == 0)   bm = readArrayBitmap();
-                                                if ((bm & 0x80) != 0) ((float []) obj) [i] = Float.intBitsToFloat (readInt ());
-                                            }
+                        break;
 
-                                            break;
+                    case DDConst.LONG:
 
-                    case DDConst.DOUBLE:    for (obj = new double [itemNumbers]; i < size; i++, bm <<= 1)
-                                            {
-                                                if ((i & 7)     == 0)   bm = readArrayBitmap();
-                                                if ((bm & 0x80) != 0) ((double []) obj) [i] = Double.longBitsToDouble (readLong ());
-                                            }
+                        for (obj = new long [itemNumbers]; i < size; i++, bm <<= 1)
+                        {
+                            if ((i & 7) == 0) bm = readArrayBitmap ();
+                            if ((bm & 0x80) != 0) ((long []) obj) [i] = readLong ();
+                        }
 
-                                            break;
+                        break;
 
-                    case DDConst.NUMBER:    for (obj = new long [itemNumbers]; i < size; i++, bm <<= 1)
-                                            {
-                                                if ((i & 7)     == 0)   bm = readArrayBitmap();
-                                                if ((bm & 0x80) != 0) ((long []) obj) [i] = readNumber (false);
-                                            }
+                    case DDConst.FLOAT:
 
-                                            break;
+                        for (obj = new float [itemNumbers]; i < size; i++, bm <<= 1)
+                        {
+                            if ((i & 7) == 0) bm = readArrayBitmap ();
+                            if ((bm & 0x80) != 0) ((float []) obj) [i] = Float.intBitsToFloat (readInt ());
+                        }
 
-                    case DDConst.S_NUMBER:  for (obj = new long [itemNumbers]; i < size; i++, bm <<= 1)
-                                            {
-                                                if ((i & 7)     == 0)   bm = readArrayBitmap();
-                                                if ((bm & 0x80) != 0) ((long []) obj) [i] = readNumber (true);
-                                            }
+                        break;
 
-                                            break;
+                    case DDConst.DOUBLE:
 
-                    case DDConst.TIME:      for (obj = new Date [itemNumbers]; i < size; i++, bm <<= 1)
-                                            {
-                                                if ((i & 7)     == 0)   bm = readArrayBitmap();
-                                                if ((bm & 0x80) != 0) ((Date []) obj) [i] = readTime ();
-                                            }
+                        for (obj = new double [itemNumbers]; i < size; i++, bm <<= 1)
+                        {
+                            if ((i & 7) == 0) bm = readArrayBitmap ();
+                            if ((bm & 0x80) != 0) ((double []) obj) [i] = Double.longBitsToDouble (readLong ());
+                        }
 
-                                            break;
+                        break;
 
-                    case DDConst.DATE:      for (obj = new Date [itemNumbers]; i < size; i++, bm <<= 1)
-                                            {
-                                                if ((i & 7)     == 0)   bm = readArrayBitmap();
-                                                if ((bm & 0x80) != 0) ((Date []) obj) [i] = readDate ();
-                                            }
+                    case DDConst.NUMBER:
 
-                                            break;
+                        for (obj = new long [itemNumbers]; i < size; i++, bm <<= 1)
+                        {
+                            if ((i & 7) == 0) bm = readArrayBitmap ();
+                            if ((bm & 0x80) != 0) ((long []) obj) [i] = readNumber (false);
+                        }
 
-                    case DDConst.DATETIME:  for (obj = new Date [itemNumbers]; i < size; i++, bm <<= 1)
-                                            {
-                                                if ((i & 7)     == 0)   bm = readArrayBitmap();
-                                                if ((bm & 0x80) != 0) ((Date []) obj) [i] = readDateTime ();
-                                            }
+                        break;
 
-                                            break;
+                    case DDConst.S_NUMBER:
 
-                    case DDConst.BYTES:     for (obj = new byte [itemNumbers][]; i < size; i++, bm <<= 1)
-                                            {
-                                                if ((i & 7)     == 0)   bm = readArrayBitmap();
-                                                if ((bm & 0x80) != 0) ((byte [][]) obj) [i] = readBytes ();
-                                            }
+                        for (obj = new long [itemNumbers]; i < size; i++, bm <<= 1)
+                        {
+                            if ((i & 7) == 0) bm = readArrayBitmap ();
+                            if ((bm & 0x80) != 0) ((long []) obj) [i] = readNumber (true);
+                        }
 
-                                            break;
+                        break;
 
-                    case DDConst.STRING:    for (obj = new String [itemNumbers]; i < size; i++, bm <<= 1)
-                                            {
-                                                if ((i & 7)     == 0)   bm = readArrayBitmap();
-                                                if ((bm & 0x80) != 0) ((String []) obj) [i] = readString ();
-                                            }
+                    case DDConst.TIME:
 
-                                            break;
+                        for (obj = new int [itemNumbers]; i < size; i++, bm <<= 1)
+                        {
+                            if ((i & 7) == 0) bm = readArrayBitmap ();
+                            if ((bm & 0x80) != 0) ((int []) obj) [i] = readTime ();
+                        }
 
-                    default: throw new DDException (DDError.INVALID_VALUE.getMessage ("Data Type",
-                                                    STRING_TYPES [itemType] + STRING_TYPES [DDConst.ARRAY],
-                                                    dataType [0] & 0xFF, mark, length));
+                        break;
+
+                    case DDConst.DATE:
+
+                        for (obj = new int [itemNumbers]; i < size; i++, bm <<= 1)
+                        {
+                            if ((i & 7) == 0) bm = readArrayBitmap ();
+                            if ((bm & 0x80) != 0) ((int []) obj) [i] = readDate ();
+                        }
+
+                        break;
+
+                    case DDConst.DATETIME:
+
+                        for (obj = new long [itemNumbers]; i < size; i++, bm <<= 1)
+                        {
+                            if ((i & 7) == 0) bm = readArrayBitmap ();
+                            if ((bm & 0x80) != 0) ((long []) obj) [i] = readDateTime ();
+                        }
+
+                        break;
+
+                    case DDConst.BYTES:
+
+                        for (obj = new byte [itemNumbers][]; i < size; i++, bm <<= 1)
+                        {
+                            if ((i & 7) == 0) bm = readArrayBitmap ();
+                            if ((bm & 0x80) != 0) ((byte [][]) obj) [i] = readBytes ();
+                        }
+
+                        break;
+
+                    case DDConst.STRING:
+
+                        for (obj = new String [itemNumbers]; i < size; i++, bm <<= 1)
+                        {
+                            if ((i & 7) == 0) bm = readArrayBitmap ();
+                            if ((bm & 0x80) != 0) ((String []) obj) [i] = readString ();
+                        }
+
+                        break;
+
+                    default:
+
+                        throw new DDException (DDError.INVALID_VALUE.getMessage ("Data Type",
+                                               STRING_TYPES [itemType] + STRING_TYPES [DDConst.ARRAY],
+                                               dataType [0] & 0xFF, mark, length));
                 }
 
                 dataType [0] |= (itemType << 4);
@@ -337,8 +374,8 @@ final class DDBuffer
                     throw new DDException (DDError.INVALID_SIZE.getMessage ("List Size", v,
                                            DDConst.MAX_ITEMS_NUMBER, DDConst.LIST, mark, length));
 
-                byte [] objectType = new byte [1];
-                DDList  list       = new DDList ();
+                int [] objectType = new int [1];
+                DDList list       = new DDList ();
 
                 int size = (int) v;
                 int k;
@@ -353,7 +390,7 @@ final class DDBuffer
                         k = j >> 4;
                     }
 
-                    objectType  [0]  = (byte) k;
+                    objectType  [0]  = k;
                     list.addData (k == DDConst.NULL ? null : read (objectType), objectType [0]);
                 }
 
@@ -454,10 +491,10 @@ final class DDBuffer
             {
                 if (!withSign) return value;
  
-                if (len >= 0 || lc < 10 || (fb & 0x7E) == 0)
+                if (len > 0 || lc < 10 || (fb & 0x7E) == 0)
                 {
                     value = (value & 1) > 0 ? ~(value >>> 1) : value >>> 1;
-                    return value;
+                    return   value;
                 }
             }
 
@@ -473,9 +510,11 @@ final class DDBuffer
 //  | readTime |
 //  +----------+
 
-    private Date readTime () throws DDException
+    private int readTime () throws DDException
     {
         long v =  readNumber (false);
+        if  (v == 0) return   0;
+
         int ms = (int) v & 1;
 
         v   >>=  1;
@@ -484,38 +523,44 @@ final class DDBuffer
         int sec = (int) v & 0x3F;    v >>= 6;
         int min = (int) v & 0x3F;    v >>= 6;
 
-        calendar.clear ();
-        if (v >= 0 && checkAndLoadTime (v, min, sec, ms)) return calendar.getTime ();
+        if (ms < 1000 && sec < 60 && min < 60 && v >= 0 && v < 24)
+            return (((int) v * 100 + min) * 100 + sec) * 1000 + ms;
 
-        throw new DDException (DDError.INVALID_VALUE.getMessage ("Time", String.format ("%02d:%02d:%02d.%03d",
-                              (int)(v), min, sec, ms), DDConst.TIME, mark, length));
+        throw new DDException (DDError.INVALID_VALUE.getMessage ("Time",
+                  String.format ("%02d:%02d:%02d.%03d", (int)(v), min, sec, ms), DDConst.TIME, mark, length));
     }
 
 //  +----------+
 //  | readDate |
 //  +----------+
 
-    private Date readDate () throws DDException
+    private int readDate () throws DDException
     {
-        long v = readNumber (true);
+        long v =  readNumber (true);
+        if  (v == 0) return   0;
 
         int day = (int) v & 0x1F;    v >>= 5;
         int mon = (int) v & 0x0F;    v >>= 4;
 
-        int unused = (int)(v >> 27);  // year 27b
-        if (checkAndLoadDate (unused, v, mon, day)) return calendar.getTime ();
+        long year = v < 0 ? -v - 1 : v;
 
-        throw new DDException (DDError.INVALID_VALUE.getMessage ("Date", String.format ("%04d-%02d-%02d",
-                              (int)(v), mon, day), DDConst.DATE, mark, length));
+        if (v != 0 && year <= 214747 && mon != 0 && mon <= 12 && day != 0 && (day <= MONTH_DAYS [mon - 1] ||
+           (mon == 2 && day == 29 && (year % 400) == 0 || ((year % 4) == 0 && (year % 100) != 0))))    // Leap Year
+                return ((int) v * 100 + mon) * 100 + day;
+
+        throw new DDException (DDError.INVALID_VALUE.getMessage ("Date",
+                               String.format ("%04d-%02d-%02d", (int)(v), mon, day), DDConst.DATE, mark, length));
     }
 
 //  +--------------+
 //  | readDateTime |
 //  +--------------+
 
-    private Date readDateTime () throws DDException
+    private long readDateTime () throws DDException
     {
         long v =  readNumber (true);
+        if  (v == 0) return   0;
+
         int ms = (int) v & 1;
 
         v   >>=  1;
@@ -527,11 +572,16 @@ final class DDBuffer
         int day  = (int) v & 0x1F;    v >>= 5;
         int mon  = (int) v & 0x0F;    v >>= 4;
 
-        int unused = (int)(v >> 27);  // year 27b
-        if (checkAndLoadDate (unused, v, mon, day) && checkAndLoadTime (hour, min, sec, ms)) return calendar.getTime ();
+        long year = v < 0 ? -v - 1 : v;
 
-        throw new DDException (DDError.INVALID_VALUE.getMessage ("DateTime", String.format ("%04d-%02d-%02d_%02d:%02d:%02d.%03d",
-                              (int)(v), mon, day, hour, min, sec, ms), DDConst.DATETIME, mark, length));
+        if (ms < 1000 && sec < 60 && min < 60 && hour < 24 &&
+            v != 0 && year <= 214747 && mon != 0 && mon <= 12 && day != 0 && (day <= MONTH_DAYS [mon - 1] ||
+           (mon == 2 && day == 29 && (year % 400) == 0 || ((year % 4) == 0 && (year % 100) != 0))))    // Leap Year
+                return ((((((v * 100 + mon) * 100 + day) * 100) + hour) * 100 + min) * 100 + sec) * 1000 + ms;
+
+        throw new DDException (DDError.INVALID_VALUE.getMessage ("DateTime",
+                               String.format ("%04d-%02d-%02d_%02d:%02d:%02d.%03d", (int)(v), mon, day,
+                                               hour, min, sec, ms), DDConst.DATETIME, mark, length));
     }
 
 //  +-----------+
@@ -543,8 +593,8 @@ final class DDBuffer
         long v = readNumber (false);
 
         if (v > DDConst.MAX_BYTES_NUMBER)
-            throw new DDException (DDError.INVALID_SIZE.getMessage ("Bytes Size", v, DDConst.MAX_BYTES_NUMBER, DDConst.BYTES, mark, length));
-
+            throw new DDException (DDError.INVALID_SIZE.getMessage
+                                  ("Bytes Size", v, DDConst.MAX_BYTES_NUMBER, DDConst.BYTES, mark, length));
         int size = (int) v;
         mark     =  offset;
 
@@ -564,8 +614,8 @@ final class DDBuffer
         long v = readNumber (false);
 
         if (v > DDConst.MAX_BYTES_NUMBER)
-            throw new DDException (DDError.INVALID_SIZE.getMessage ("String Size", v, DDConst.MAX_BYTES_NUMBER, DDConst.STRING, mark, length));
-
+            throw new DDException (DDError.INVALID_SIZE.getMessage
+                                  ("String Size", v, DDConst.MAX_BYTES_NUMBER, DDConst.STRING, mark, length));
         int size = (int) v;
         mark     =  offset;
 
@@ -608,39 +658,6 @@ final class DDBuffer
         return new String (c, 0, size);
     }
 
-//  +------------------+
-//  | checkAndLoadTime |
-//  +------------------+
-
-    private boolean checkAndLoadTime (long hour, int min, int sec, int ms)
-    {
-        try
-        {
-            calendar.set (Calendar.HOUR_OF_DAY, (int) hour);
-            calendar.set (Calendar.MINUTE,            min);
-            calendar.set (Calendar.SECOND,            sec);
-            calendar.set (Calendar.MILLISECOND,       ms);
-        }
-        catch (Exception e) {return false;}
-
-        return true;
-    }
-
-//  +------------------+
-//  | checkAndLoadDate |
-//  +------------------+
-
-    private boolean checkAndLoadDate (int unused, long year, int mon, int day)
-    {
-        if (unused != 0 && unused != -1) return false;
-        calendar.clear ();
-
-        try   {calendar.set ((int) year, mon - 1, day);}
-        catch (Exception e) {return false;}
-
-        return true;
-    }
-
 //  +-----------------+
 //  | readArrayBitmap |
 //  +-----------------+
@@ -671,19 +688,19 @@ final class DDBuffer
     {
         switch (type & 0x0F)
         {
-            case DDConst.BYTE:     writeByte     ((Byte)     data);                          return;
-            case DDConst.SHORT:    writeShort    ((Short)    data);                          return;
-            case DDConst.INT:      writeInt      ((Integer)  data);                          return;
-            case DDConst.LONG:     writeLong     ((Long)     data);                          return;
+            case DDConst.BYTE:     writeByte     ((byte)    data);                           return;
+            case DDConst.SHORT:    writeShort    ((short)   data);                           return;
+            case DDConst.INT:      writeInt      ((int)     data);                           return;
+            case DDConst.LONG:     writeLong     ((long)    data);                           return;
+            case DDConst.NUMBER:   writeNumber   ((long)    data, false);                    return;
+            case DDConst.S_NUMBER: writeNumber   ((long)    data, true);                     return;
             case DDConst.FLOAT:    writeInt       (Float.floatToIntBits    ((Float)  data)); return;
             case DDConst.DOUBLE:   writeLong      (Double.doubleToLongBits ((Double) data)); return;
-            case DDConst.NUMBER:   writeNumber   ((Long)     data, false);                   return;
-            case DDConst.S_NUMBER: writeNumber   ((Long)     data, true);                    return;
-            case DDConst.TIME:     writeTime     ((Date)     data);                          return;
-            case DDConst.DATE:     writeDate     ((Date)     data);                          return;
-            case DDConst.DATETIME: writeDateTime ((Date)     data);                          return;
-            case DDConst.BYTES:    writeBytes    ((byte [])  data);                          return;
-            case DDConst.STRING:   writeString   ((String)   data);                          return;
+            case DDConst.TIME:     writeTime     ((int)     data);                           return;
+            case DDConst.DATE:     writeDate     ((int)     data);                           return;
+            case DDConst.DATETIME: writeDateTime ((long)    data);                           return;
+            case DDConst.BYTES:    writeBytes    ((byte []) data);                           return;
+            case DDConst.STRING:   writeString   ((String)  data);                           return;
 
             case DDConst.ARRAY:
             {
@@ -693,185 +710,211 @@ final class DDBuffer
 
                 switch (type)
                 {
-                    case DDConst.BYTE:      for (i = ((byte []) data).length, size = i; size > 0 && ((byte []) data) [size - 1] == 0;) {size--;}
-                                            writeArrayInfo (size, i, type);
+                    case DDConst.BYTE:
 
-                                            for (i = 0; i < size; i++)
-                                            {
-                                                if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
-                                                bm <<= 1;
+                        for (i = ((byte []) data).length, size = i; size > 0 && ((byte []) data) [size - 1] == 0;) {size--;}
+                        writeArrayInfo (size, i, type);
 
-                                                if              (((byte []) data) [i] == 0) bm |= 0;
-                                                else {writeByte (((byte []) data) [i]);     bm |= 1;}
-                                            }
+                        for (i = 0; i < size; i++)
+                        {
+                            if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
+                            bm <<= 1;
 
-                                            break;
+                            if              (((byte []) data) [i] == 0) bm |= 0;
+                            else {writeByte (((byte []) data) [i]);     bm |= 1;}
+                        }
 
-                    case DDConst.SHORT:     for (i = ((short []) data).length, size = i; size > 0 && ((short []) data) [size - 1] == 0;) {size--;}
-                                            writeArrayInfo (size, i, type);
+                        break;
 
-                                            for (i = 0; i < size; i++)
-                                            {
-                                                if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
-                                                bm <<= 1;
+                    case DDConst.SHORT:
 
-                                                if               (((short []) data) [i] == 0) bm |= 0;
-                                                else {writeShort (((short []) data) [i]);     bm |= 1;}
-                                            }
+                        for (i = ((short []) data).length, size = i; size > 0 && ((short []) data) [size - 1] == 0;) {size--;}
+                        writeArrayInfo (size, i, type);
 
-                                            break;
+                        for (i = 0; i < size; i++)
+                        {
+                            if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
+                            bm <<= 1;
 
-                    case DDConst.INT:       for (i = ((int []) data).length, size = i; size > 0 && ((int []) data) [size - 1] == 0;) {size--;}
-                                            writeArrayInfo (size, i, type);
+                            if               (((short []) data) [i] == 0) bm |= 0;
+                            else {writeShort (((short []) data) [i]);     bm |= 1;}
+                        }
 
-                                            for (i = 0; i < size; i++)
-                                            {
-                                                if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
-                                                bm <<= 1;
+                        break;
 
-                                                if             (((int []) data) [i] == 0) bm |= 0;
-                                                else {writeInt (((int []) data) [i]);     bm |= 1;}
-                                            }
+                    case DDConst.INT:
 
-                                            break;
+                        for (i = ((int []) data).length, size = i; size > 0 && ((int []) data) [size - 1] == 0;) {size--;}
+                        writeArrayInfo (size, i, type);
 
-                    case DDConst.LONG:      for (i = ((long []) data).length, size = i; size > 0 && ((long []) data) [size - 1] == 0;) {size--;}
-                                            writeArrayInfo (size, i, type);
+                        for (i = 0; i < size; i++)
+                        {
+                            if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
+                            bm <<= 1;
 
-                                            for (i = 0; i < size; i++)
-                                            {
-                                                if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
-                                                bm <<= 1;
+                            if             (((int []) data) [i] == 0) bm |= 0;
+                            else {writeInt (((int []) data) [i]);     bm |= 1;}
+                        }
 
-                                                if              (((long []) data) [i] == 0) bm |= 0;
-                                                else {writeLong (((long []) data) [i]);     bm |= 1;}
-                                            }
+                        break;
 
-                                            break;
+                    case DDConst.LONG:
 
-                    case DDConst.FLOAT:     for (i = ((float []) data).length, size = i; size > 0 && ((float []) data) [size - 1] == 0;) {size--;}
-                                            writeArrayInfo (size, i, type);
+                        for (i = ((long []) data).length, size = i; size > 0 && ((long []) data) [size - 1] == 0;) {size--;}
+                        writeArrayInfo (size, i, type);
 
-                                            for (i = 0; i < size; i++)
-                                            {
-                                                if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
-                                                bm <<= 1;
+                        for (i = 0; i < size; i++)
+                        {
+                            if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
+                            bm <<= 1;
 
-                                                if                                   (((float  []) data) [i] == 0) bm |= 0;
-                                                else {writeInt (Float.floatToIntBits (((float  []) data) [i]));    bm |= 1;}
-                                            }
+                            if              (((long []) data) [i] == 0) bm |= 0;
+                            else {writeLong (((long []) data) [i]);     bm |= 1;}
+                        }
 
-                                            break;
+                        break;
 
-                    case DDConst.DOUBLE:    for (i = ((double []) data).length, size = i; size > 0 && ((double []) data) [size - 1] == 0;) {size--;}
-                                            writeArrayInfo (size, i, type);
+                    case DDConst.FLOAT:
 
-                                            for (i = 0; i < size; i++)
-                                            {
-                                                if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
-                                                bm <<= 1;
+                        for (i = ((float []) data).length, size = i; size > 0 && ((float []) data) [size - 1] == 0;) {size--;}
+                        writeArrayInfo (size, i, type);
 
-                                                if                                       (((double []) data) [i] == 0) bm |= 0;
-                                                else {writeLong (Double.doubleToLongBits (((double []) data) [i]));    bm |= 1;}
-                                            }
+                        for (i = 0; i < size; i++)
+                        {
+                            if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
+                            bm <<= 1;
 
-                                            break;
+                            if                                   (((float  []) data) [i] == 0) bm |= 0;
+                            else {writeInt (Float.floatToIntBits (((float  []) data) [i]));    bm |= 1;}
+                        }
 
-                    case DDConst.NUMBER:    for (i = ((long []) data).length, size = i; size > 0 && ((long []) data) [size - 1] == 0;) {size--;}
-                                            writeArrayInfo (size, i, type);
+                        break;
 
-                                            for (i = 0; i < size; i++)
-                                            {
-                                                if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
-                                                bm <<= 1;
+                    case DDConst.DOUBLE:
 
-                                                if                (((long []) data) [i] == 0)    bm |= 0;
-                                                else {writeNumber (((long []) data) [i], false); bm |= 1;}
-                                            }
+                        for (i = ((double []) data).length, size = i; size > 0 && ((double []) data) [size - 1] == 0;) {size--;}
+                        writeArrayInfo (size, i, type);
 
-                                            break;
+                        for (i = 0; i < size; i++)
+                        {
+                            if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
+                            bm <<= 1;
 
-                    case DDConst.S_NUMBER:  for (i = ((long []) data).length, size = i; size > 0 && ((long []) data) [size - 1] == 0;) {size--;}
-                                            writeArrayInfo (size, i, type);
+                            if                                       (((double []) data) [i] == 0) bm |= 0;
+                            else {writeLong (Double.doubleToLongBits (((double []) data) [i]));    bm |= 1;}
+                        }
 
-                                            for (i = 0; i < size; i++)
-                                            {
-                                                if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
-                                                bm <<= 1;
+                        break;
 
-                                                if                (((long []) data) [i] == 0)    bm |= 0;
-                                                else {writeNumber (((long []) data) [i], true);  bm |= 1;}
-                                            }
+                    case DDConst.NUMBER:
 
-                                            break;
+                        for (i = ((long []) data).length, size = i; size > 0 && ((long []) data) [size - 1] == 0;) {size--;}
+                        writeArrayInfo (size, i, type);
 
-                    case DDConst.TIME:      for (i = ((Date []) data).length, size = i; size > 0 && ((Date []) data) [size - 1] == null;) {size--;}
-                                            writeArrayInfo (size, i, type);
+                        for (i = 0; i < size; i++)
+                        {
+                            if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
+                            bm <<= 1;
 
-                                            for (i = 0; i < size; i++)
-                                            {
-                                                if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
-                                                bm <<= 1;
+                            if                (((long []) data) [i] == 0)    bm |= 0;
+                            else {writeNumber (((long []) data) [i], false); bm |= 1;}
+                        }
 
-                                                if              (((Date []) data) [i] == null) bm |= 0;
-                                                else {writeTime (((Date []) data) [i]);        bm |= 1;}
-                                            }
+                        break;
 
-                                            break;
+                    case DDConst.S_NUMBER:
 
-                    case DDConst.DATE:      for (i = ((Date []) data).length, size = i; size > 0 && ((Date []) data) [size - 1] == null;) {size--;}
-                                            writeArrayInfo (size, i, type);
+                        for (i = ((long []) data).length, size = i; size > 0 && ((long []) data) [size - 1] == 0;) {size--;}
+                        writeArrayInfo (size, i, type);
 
-                                            for (i = 0; i < size; i++)
-                                            {
-                                                if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
-                                                bm <<= 1;
+                        for (i = 0; i < size; i++)
+                        {
+                            if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
+                            bm <<= 1;
 
-                                                if              (((Date []) data) [i] == null) bm |= 0;
-                                                else {writeDate (((Date []) data) [i]);        bm |= 1;}
-                                            }
+                            if                (((long []) data) [i] == 0)    bm |= 0;
+                            else {writeNumber (((long []) data) [i], true);  bm |= 1;}
+                        }
 
-                                            break;
+                        break;
 
-                    case DDConst.DATETIME:  for (i = ((Date []) data).length, size = i; size > 0 && ((Date []) data) [size - 1] == null;) {size--;}
-                                            writeArrayInfo (size, i, type);
+                    case DDConst.TIME:
 
-                                            for (i = 0; i < size; i++)
-                                            {
-                                                if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
-                                                bm <<= 1;
+                        for (i = ((int []) data).length, size = i; size > 0 && ((int []) data) [size - 1] == 0;) {size--;}
+                        writeArrayInfo (size, i, type);
 
-                                                if                  (((Date []) data) [i] == null) bm |= 0;
-                                                else {writeDateTime (((Date []) data) [i]);        bm |= 1;}
-                                            }
+                        for (i = 0; i < size; i++)
+                        {
+                            if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
+                            bm <<= 1;
 
-                                            break;
+                            if              (((int []) data) [i] == 0) bm |= 0;
+                            else {writeTime (((int []) data) [i]);     bm |= 1;}
+                        }
 
-                    case DDConst.BYTES:     for (i = ((byte [][]) data).length, size = i; size > 0 && ((byte [][]) data) [size - 1] == null;) {size--;}
-                                            writeArrayInfo (size, i, type);
+                        break;
 
-                                            for (i = 0; i < size; i++)
-                                            {
-                                                if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
-                                                    bm <<= 1;
+                    case DDConst.DATE:
 
-                                                if               (((byte [][]) data) [i] == null) bm |= 0;
-                                                else {writeBytes (((byte [][]) data) [i]);        bm |= 1;}
-                                            }
+                        for (i = ((int []) data).length, size = i; size > 0 && ((int []) data) [size - 1] == 0;) {size--;}
+                        writeArrayInfo (size, i, type);
 
-                                            break;
+                        for (i = 0; i < size; i++)
+                        {
+                            if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
+                            bm <<= 1;
 
-                    default:                for (i = ((String []) data).length, size = i; size > 0 && ((String []) data) [size - 1] == null;) {size--;}
-                                            writeArrayInfo (size, i, type);
+                            if              (((int []) data) [i] == 0) bm |= 0;
+                            else {writeDate (((int []) data) [i]);     bm |= 1;}
+                        }
 
-                                            for (i = 0; i < size; i++)
-                                            {
-                                                if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
-                                                bm <<= 1;
+                        break;
 
-                                                if                (((String []) data) [i] == null) bm |= 0;
-                                                else {writeString (((String []) data) [i]);        bm |= 1;}
-                                            }
+                    case DDConst.DATETIME:
+
+                        for (i = ((long []) data).length, size = i; size > 0 && ((long []) data) [size - 1] == 0;) {size--;}
+                        writeArrayInfo (size, i, type);
+
+                        for (i = 0; i < size; i++)
+                        {
+                            if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
+                            bm <<= 1;
+
+                            if                  (((long []) data) [i] == 0) bm |= 0;
+                            else {writeDateTime (((long []) data) [i]);        bm |= 1;}
+                        }
+
+                        break;
+
+                    case DDConst.BYTES:
+
+                        for (i = ((byte [][]) data).length, size = i; size > 0 && ((byte [][]) data) [size - 1] == null;) {size--;}
+                        writeArrayInfo (size, i, type);
+
+                        for (i = 0; i < size; i++)
+                        {
+                            if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
+                                bm <<= 1;
+
+                            if               (((byte [][]) data) [i] == null) bm |= 0;
+                            else {writeBytes (((byte [][]) data) [i]);        bm |= 1;}
+                        }
+
+                        break;
+
+                    default:
+
+                        for (i = ((String []) data).length, size = i; size > 0 && ((String []) data) [size - 1] == null;) {size--;}
+                        writeArrayInfo (size, i, type);
+
+                        for (i = 0; i < size; i++)
+                        {
+                            if ((i & 7) == 0) {writeArrayBitmap (i, bmp, bm); bmp = offset++; bm = 0;}
+                            bm <<= 1;
+
+                            if                (((String []) data) [i] == null) bm |= 0;
+                            else {writeString (((String []) data) [i]);        bm |= 1;}
+                        }
                 }
 
                 if (i > 0)
@@ -886,7 +929,7 @@ final class DDBuffer
             default:    // case DDConst.LIST:
             {
                 DDList list = (DDList) data;
-                writeNumber (list.getDataCount (), false);
+                writeNumber (list.getDataNumber (), false);
 
                 Object obj;
                 int    j, k, i = -1;
@@ -906,7 +949,8 @@ final class DDBuffer
                     }
                     else
                     {
-                        if (!ensureCapacity (1)) throw new DDException (DDError.BUFFER_OVERFLOW.getMessage (1, offset, length));
+                        if (!ensureCapacity (1))
+                             throw new DDException (DDError.BUFFER_OVERFLOW.getMessage (1, offset, length));
 
                         i = offset;
                         buffer [offset++] = (byte)(k << 4);
@@ -998,30 +1042,59 @@ final class DDBuffer
 //  | writeTime |
 //  +-----------+
 
-    private void writeTime (Date value) throws DDException
+    private void writeTime (int value) throws DDException
     {
-        calendar.setTime (value);
-        writeNumber (buildTime (0), false);
+        int ms  = value % 1000;    value /= 1000;
+        int sec = value % 100;     value /= 100;
+        int min = value % 100;     value /= 100;
+
+        value = (value << 6) | min;
+        value = (value << 6) | sec;
+
+        if (ms > 0) value = (value << 11) | (ms << 1) | 1;
+        else        value =  value << 1;
+
+        writeNumber (value, false);
     }
 
 //  +-----------+
 //  | writeDate |
 //  +-----------+
 
-    private void writeDate (Date value) throws DDException
+    private void writeDate (int value) throws DDException
     {
-        calendar.setTime (value);
-        writeNumber (buildDate (), true);
+        int day = value % 100;    value /= 100;
+        int mon = value % 100;    value /= 100;
+
+        value = (value << 4) | mon;
+        value = (value << 5) | day;
+
+        writeNumber (value, true);
     }
 
 //  +---------------+
 //  | writeDateTime |
 //  +---------------+
 
-    private void writeDateTime (Date value) throws DDException
+    private void writeDateTime (long value) throws DDException
     {
-        calendar.setTime (value);
-        writeNumber (buildTime (buildDate ()), true);
+        int ms   = (int)(value % 1000);    value /= 1000;
+        int sec  = (int)(value % 100);     value /= 100;
+        int min  = (int)(value % 100);     value /= 100;
+        int hour = (int)(value % 100);     value /= 100;
+        int day  = (int)(value % 100);     value /= 100;
+        int mon  = (int)(value % 100);     value /= 100;
+
+        value = (value << 4) | mon;
+        value = (value << 5) | day;
+        value = (value << 5) | hour;
+        value = (value << 6) | min;
+        value = (value << 6) | sec;
+
+        if (ms > 0) value = (value << 11) | (ms << 1) | 1;
+        else        value =  value << 1;
+
+        writeNumber (value, true);
     }
 
 //  +------------+
@@ -1091,37 +1164,6 @@ final class DDBuffer
         if (x != 0)   writeNumber (numbers - size, false);
     }
 
-//  +-----------+
-//  | buildTime |
-//  +-----------+
-
-    private long buildTime (long value)
-    {
-        value = (value << 5) | calendar.get (Calendar.HOUR_OF_DAY);
-        value = (value << 6) | calendar.get (Calendar.MINUTE);
-        value = (value << 6) | calendar.get (Calendar.SECOND);
-
-        int ms = calendar.get (Calendar.MILLISECOND);
-        if (ms > 0) value = (value << 10) | ms;
-
-        return (value << 1) | (ms > 0 ? 1 : 0);
-    }
-
-//  +-----------+
-//  | buildDate |
-//  +-----------+
-
-    private long buildDate ()
-    {
-        long value;
-
-        value = calendar.get (Calendar.YEAR);
-        if (calendar.get (Calendar.ERA) == 0) value = -value;
-
-        value = (value << 4) | (calendar.get (Calendar.MONTH) + 1);
-        return  (value << 5) |  calendar.get (Calendar.DAY_OF_MONTH);
-    }
-
 //  #================#
 //  # writeTypeAndId #
 //  #================#
@@ -1134,19 +1176,73 @@ final class DDBuffer
         buffer [offset++] = (byte) typeAndId;
     }
 
+//  #=============#
+//  # isValidTime #
+//  #=============#
+
+    public static boolean isValidTime (int data)
+    {
+        if (data == 0) return true;
+
+        data   /= 1000;
+        int sec = data % 100;     data /= 100;
+        int min = data % 100;     data /= 100;
+
+        return sec < 60 && min < 60 && data >= 0 && data < 24;
+    }
+
+//  #=============#
+//  # isValidDate #
+//  #=============#
+
+    public static boolean isValidDate (int data)
+    {
+        if (data == 0) return true;
+
+        int day = data % 100;    data /= 100;
+        int mon = data % 100;    data /= 100;
+
+        int year = data < 0 ? -data - 1 : data;
+
+        return data != 0 && year <= 214747 && mon != 0 && mon <= 12 && day != 0 && (day <= MONTH_DAYS [mon - 1] ||
+              (mon == 2 && day == 29 && (year % 400) == 0 || ((year % 4) == 0 && (year % 100) != 0)));    // Leap Year
+    }
+
+//  #=================#
+//  # isValidDateTime #
+//  #=================#
+
+    public static boolean isValidDateTime (long data)
+    {
+        if (data == 0) return true;
+
+        data    /=  1000;
+        int sec  = (int)(data % 100);     data /= 100;
+        int min  = (int)(data % 100);     data /= 100;
+        int hour = (int)(data % 100);     data /= 100;
+        int day  = (int)(data % 100);     data /= 100;
+        int mon  = (int)(data % 100);     data /= 100;
+
+        int year = (int)(data < 0 ? -data - 1 : data);
+
+        return sec < 60 && min < 60 && hour < 24 && data != 0 && year <= 214747 &&
+               mon != 0 && mon <= 12 && day != 0 && (day <= MONTH_DAYS [mon - 1] ||
+              (mon == 2 && day == 29 && (year % 400) == 0 || ((year % 4) == 0 && (year % 100) != 0)));    // Leap Year
+}
+
 //  #============#
 //  # stringData #
 //  #============#
 
-    static void stringData(StringBuilder sb, Object data, int type, DDProps props)
+    static void stringData (StringBuilder sb, Object data, int type)
     {
         switch (type & 0x0F)
         {
             default: sb.append (data); return;    // byte, short, int, float, long, double, number, signedNumber
 
-            case DDConst.TIME:     stringTime     (sb, (Date)    data); return;
-            case DDConst.DATE:     stringDate     (sb, (Date)    data); return;
-            case DDConst.DATETIME: stringDateTime (sb, (Date)    data); return;
+            case DDConst.TIME:     stringTime     (sb, (int)     data); return;
+            case DDConst.DATE:     stringDate     (sb, (int)     data); return;
+            case DDConst.DATETIME: stringDateTime (sb, (long)    data); return;
             case DDConst.BYTES:    stringBytes    (sb, (byte []) data); return;
             case DDConst.STRING:   stringString   (sb, (String)  data); return;
 
@@ -1158,142 +1254,164 @@ final class DDBuffer
 
                 switch (type)
                 {
-                    case DDConst.BYTE:      len = ((byte []) data).length;
-                                            sb.append (len).append (DDBuffer.DATA_TYPES [type]).append ('[');
+                    case DDConst.BYTE:
 
-                                            for (; i < len; i++)
-                                            {
-                                                if (sep) sb.append (',');
-                                                sb.append (((byte []) data) [i]);
-                                                sep = true;
-                                            }
+                        len = ((byte []) data).length;
+                        sb.append (len).append (DDBuffer.DATA_TYPES [type]).append ('[');
 
-                                            break;
+                        for (; i < len; i++)
+                        {
+                            if (sep) sb.append (',');
+                            sb.append (((byte []) data) [i]);
+                            sep = true;
+                        }
 
-                    case DDConst.SHORT:     len = ((short []) data).length;
-                                            sb.append (len).append (DDBuffer.DATA_TYPES [type]).append ('[');
+                        break;
 
-                                            for (; i < len; i++)
-                                            {
-                                                if (sep) sb.append (',');
-                                                sb.append (((short []) data) [i]);
-                                                sep = true;
-                                            }
+                    case DDConst.SHORT:
 
-                                            break;
+                        len = ((short []) data).length;
+                        sb.append (len).append (DDBuffer.DATA_TYPES [type]).append ('[');
 
-                    case DDConst.INT:       len = ((int []) data).length;
-                                            sb.append (len).append (DDBuffer.DATA_TYPES [type]).append ('[');
+                        for (; i < len; i++)
+                        {
+                            if (sep) sb.append (',');
+                            sb.append (((short []) data) [i]);
+                            sep = true;
+                        }
 
-                                            for (; i < len; i++)
-                                            {
-                                                if (sep) sb.append (',');
-                                                sb.append (((int []) data) [i]);
-                                                sep = true;
-                                            }
+                        break;
 
-                                            break;
+                    case DDConst.INT:
 
-                    case DDConst.FLOAT:     len = ((float []) data).length;
-                                            sb.append (len).append (DDBuffer.DATA_TYPES [type]).append ('[');
+                        len = ((int []) data).length;
+                        sb.append (len).append (DDBuffer.DATA_TYPES [type]).append ('[');
 
-                                            for (; i < len; i++)
-                                            {
-                                                if (sep) sb.append (',');
-                                                sb.append (((float []) data) [i]);
-                                                sep = true;
-                                            }
+                        for (; i < len; i++)
+                        {
+                            if (sep) sb.append (',');
+                            sb.append (((int []) data) [i]);
+                            sep = true;
+                        }
 
-                                            break;
+                        break;
 
-                    case DDConst.DOUBLE:    len = ((double []) data).length;
-                                            sb.append (len).append (DDBuffer.DATA_TYPES [type]).append ('[');
+                    case DDConst.FLOAT:
 
-                                            for (; i < len; i++)
-                                            {
-                                                if (sep) sb.append (',');
-                                                sb.append (((double []) data) [i]);
-                                                sep = true;
-                                            }
+                        len = ((float []) data).length;
+                        sb.append (len).append (DDBuffer.DATA_TYPES [type]).append ('[');
 
-                                            break;
+                        for (; i < len; i++)
+                        {
+                            if (sep) sb.append (',');
+                            sb.append (((float []) data) [i]);
+                            sep = true;
+                        }
 
-                    case DDConst.TIME:      len = ((Date []) data).length;
-                                            sb.append (len).append (DDBuffer.DATA_TYPES [type]).append ('[');
+                        break;
 
-                                            for (; i < len; i++)
-                                            {
-                                                if (sep) sb.append (',');
-                                                if (((Date []) data) [i] != null) stringTime (sb, ((Date []) data) [i]);
-                                                sep = true;
-                                            }
+                    case DDConst.DOUBLE:
 
-                                            break;
+                        len = ((double []) data).length;
+                        sb.append (len).append (DDBuffer.DATA_TYPES [type]).append ('[');
 
-                    case DDConst.DATE:      len = ((Date []) data).length;
-                                            sb.append (len).append (DDBuffer.DATA_TYPES [type]).append ('[');
+                        for (; i < len; i++)
+                        {
+                            if (sep) sb.append (',');
+                            sb.append (((double []) data) [i]);
+                            sep = true;
+                        }
 
-                                            for (; i < len; i++)
-                                            {
-                                                if (sep) sb.append (',');
-                                                if (((Date []) data) [i] != null) stringDate (sb, ((Date []) data) [i]);
-                                                sep = true;
-                                            }
+                        break;
 
-                                            break;
+                    case DDConst.TIME:
 
-                    case DDConst.DATETIME:  len = ((Date []) data).length;
-                                            sb.append (len).append (DDBuffer.DATA_TYPES [type]).append ('[');
+                        len = ((int []) data).length;
+                        sb.append (len).append (DDBuffer.DATA_TYPES [type]).append ('[');
 
-                                            for (; i < len; i++)
-                                            {
-                                                if (sep) sb.append (',');
-                                                if (((Date []) data) [i] != null) stringDateTime (sb, ((Date []) data) [i]);
-                                                sep = true;
-                                            }
+                        for (; i < len; i++)
+                        {
+                            if (sep) sb.append (',');
+                            if (((int []) data) [i] != 0) stringTime (sb, ((int []) data) [i]);
+                            sep = true;
+                        }
 
-                                            break;
+                        break;
 
-                    case DDConst.BYTES:     len = ((byte [][]) data).length;
-                                            sb.append (len).append (DDBuffer.DATA_TYPES [type]).append ('[');
+                    case DDConst.DATE:
 
-                                            for (; i < len; i++)
-                                            {
-                                                if (sep) sb.append (',');
-                                                if (((byte [][]) data) [i] != null) stringBytes (sb, ((byte [][]) data) [i]);
-                                                sep = true;
-                                            }
+                        len = ((int []) data).length;
+                        sb.append (len).append (DDBuffer.DATA_TYPES [type]).append ('[');
 
-                                            break;
+                        for (; i < len; i++)
+                        {
+                            if (sep) sb.append (',');
+                            if (((int []) data) [i] != 0) stringDate (sb, ((int []) data) [i]);
+                            sep = true;
+                        }
 
-                    case DDConst.STRING:    len = ((String []) data).length;
-                                            sb.append (len).append (DDBuffer.DATA_TYPES [type]).append ('[');
+                        break;
 
-                                            for (; i < len; i++)
-                                            {
-                                                if (sep) sb.append (',');
-                                                if (((String []) data) [i] != null) stringString (sb, ((String []) data) [i]);
-                                                sep = true;
-                                            }
+                    case DDConst.DATETIME:
 
-                                            break;
+                        len = ((long []) data).length;
+                        sb.append (len).append (DDBuffer.DATA_TYPES [type]).append ('[');
 
-                    default:               len = ((long []) data).length;
-                                           sb.append (len).append (DDBuffer.DATA_TYPES [type]).append ('[');
+                        for (; i < len; i++)
+                        {
+                            if (sep) sb.append (',');
+                            if (((long []) data) [i] != 0) stringDateTime (sb, ((long []) data) [i]);
+                            sep = true;
+                        }
 
-                                            for (; i < len; i++)
-                                            {
-                                                if (sep) sb.append (',');
-                                                sb.append (((long []) data) [i]);
-                                                sep = true;
-                                            }
+                        break;
+
+                    case DDConst.BYTES:
+
+                        len = ((byte [][]) data).length;
+                        sb.append (len).append (DDBuffer.DATA_TYPES [type]).append ('[');
+
+                        for (; i < len; i++)
+                        {
+                            if (sep) sb.append (',');
+                            if (((byte [][]) data) [i] != null) stringBytes (sb, ((byte [][]) data) [i]);
+                            sep = true;
+                        }
+
+                        break;
+
+                    case DDConst.STRING:
+
+                        len = ((String []) data).length;
+                        sb.append (len).append (DDBuffer.DATA_TYPES [type]).append ('[');
+
+                        for (; i < len; i++)
+                        {
+                            if (sep) sb.append (',');
+                            if (((String []) data) [i] != null) stringString (sb, ((String []) data) [i]);
+                            sep = true;
+                        }
+
+                        break;
+
+                    default:
+
+                        len = ((long []) data).length;
+                        sb.append (len).append (DDBuffer.DATA_TYPES [type]).append ('[');
+
+                        for (; i < len; i++)
+                        {
+                            if (sep) sb.append (',');
+                            sb.append (((long []) data) [i]);
+                            sep = true;
+                        }
                 }
 
                 sb.append (']');
                 return;
             }
 
-            case DDConst.LIST: ((DDList) data).toString (sb, props);
+            case DDConst.LIST: ((DDList) data).toString (sb);
         }
     }
 
@@ -1301,36 +1419,41 @@ final class DDBuffer
 //  | stringTime |
 //  +------------+
 
-    private static void stringTime (StringBuilder sb, Date data)
+    private static void stringTime (StringBuilder sb, int data)
     {
-        calendar.setTime (data);
-        sb.append (String.format ("%02d:%02d:%02d.%03d",
-            calendar.get (Calendar.HOUR_OF_DAY), calendar.get (Calendar.MINUTE), calendar.get (Calendar.SECOND),
-            calendar.get (Calendar.MILLISECOND)));
+        int ms  = data % 1000;    data /= 1000;
+        int sec = data % 100;     data /= 100;
+        int min = data % 100;     data /= 100;
+
+        sb.append (String.format ("%02d:%02d:%02d.%03d", data, min, sec, ms));
     }
 
 //  +------------+
 //  | stringDate |
 //  +------------+
 
-    private static void stringDate (StringBuilder sb, Date data)
+    private static void stringDate (StringBuilder sb, int data)
     {
-        calendar.setTime (data);
-        sb.append (String.format ("%04d-%02d-%02d",
-            calendar.get (Calendar.YEAR), calendar.get (Calendar.MONTH) + 1, calendar.get (Calendar.DAY_OF_MONTH)));
+        int day = data % 100;    data /= 100;
+        int mon = data % 100;    data /= 100;
+
+        sb.append (String.format ("%04d-%02d-%02d", data, mon, day));
     }
 
 //  +----------------+
 //  | stringDateTime |
 //  +----------------+
 
-    private static void stringDateTime (StringBuilder sb, Date data)
+    private static void stringDateTime (StringBuilder sb, long data)
     {
-        calendar.setTime (data);
-        sb.append (String.format ("%04d-%02d-%02d_%02d:%02d:%02d.%03d",
-            calendar.get (Calendar.YEAR),        calendar.get (Calendar.MONTH) + 1, calendar.get (Calendar.DAY_OF_MONTH),
-            calendar.get (Calendar.HOUR_OF_DAY), calendar.get (Calendar.MINUTE),    calendar.get (Calendar.SECOND),
-            calendar.get (Calendar.MILLISECOND)));
+        int ms   = (int)(data % 1000);    data /= 1000;
+        int sec  = (int)(data % 100);     data /= 100;
+        int min  = (int)(data % 100);     data /= 100;
+        int hour = (int)(data % 100);     data /= 100;
+        int day  = (int)(data % 100);     data /= 100;
+        int mon  = (int)(data % 100);     data /= 100;
+
+        sb.append (String.format ("%04d-%02d-%02d_%02d:%02d:%02d.%03d", data, mon, day, hour, min, sec, ms));
     }
 
 //  +-------------+

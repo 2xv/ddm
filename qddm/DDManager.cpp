@@ -2,12 +2,16 @@
 //  # Dynamic Data Manager - Version 1.0.0 #
 //  #                                      #
 //  # Author: Marco Vagnoni                #
+//  # Email:  marco.vagnoni@yahoo.com      #
 //  # Date:   April     2019 (v1.0.0)      #
 //  #======================================#
 
 #include <cstring>
 #include <QTextStream>
+
 #include "DDManager.h"
+
+#define isLeapYear(year) (!(year % 400) || (!(year % 4) && (year % 100)))
 
 //  #=============#
 //  # Constructor #
@@ -20,11 +24,11 @@ DDManager::DDManager ()
     memset (dataTypes,      0, sizeof (dataTypes));
     memset (propertiesRoot, 0, sizeof (propertiesRoot));
 
-    dataCheck       = true;
-    dataDefault     = true;
-    dataCount       = 0;
-    propertiesCount = 0;
-    newObjectList   = nullptr;
+    dataCheck        = true;
+    dataDefault      = true;
+    dataNumber       = 0;
+    propertiesNumber = 0;
+    newObjectList    = nullptr;
 }
 
 //  #============#
@@ -40,26 +44,22 @@ DDManager::~DDManager ()
         workObjectNode = newObjectList;
         newObjectList  = newObjectList->next;
 
-        if (workObjectNode->type >= DDC_TIME)
+        if (workObjectNode->type > DDC_DATETIME)
             switch (workObjectNode->type)
             {
-                case 0x100:          delete [] static_cast <void               **> (workObjectNode->object); break;
-                case DDC_TIME:       delete    static_cast <QTime               *> (workObjectNode->object); break;
-                case DDC_DATE:       delete    static_cast <QDate               *> (workObjectNode->object); break;
-                case DDC_DATETIME:   delete    static_cast <QDateTime           *> (workObjectNode->object); break;
-                case DDC_BYTES:      delete    static_cast <QByteArray          *> (workObjectNode->object); break;
-                case DDC_STRING:     delete    static_cast <QString             *> (workObjectNode->object); break;
-                case DDC_LIST:       delete    static_cast <DDList              *> (workObjectNode->object); break;
-                case DDC_A_BYTE:     delete    static_cast <QVector <char>      *> (workObjectNode->object); break;
-                case DDC_A_SHORT:    delete    static_cast <QVector <short>     *> (workObjectNode->object); break;
+                case 0x100:        delete [] static_cast <void               **> (workObjectNode->object); break;
+                case DDC_BYTES:    delete    static_cast <QByteArray          *> (workObjectNode->object); break;
+                case DDC_STRING:   delete    static_cast <QString             *> (workObjectNode->object); break;
+                case DDC_LIST:     delete    static_cast <DDList              *> (workObjectNode->object); break;
+                case DDC_A_BYTE:   delete    static_cast <QVector <char>      *> (workObjectNode->object); break;
+                case DDC_A_SHORT:  delete    static_cast <QVector <short>     *> (workObjectNode->object); break;
                 case DDC_A_FLOAT:
-                case DDC_A_INT:      delete    static_cast <QVector <int>       *> (workObjectNode->object); break;
-                case DDC_A_TIME:     delete    static_cast <QVector <QTime>     *> (workObjectNode->object); break;
-                case DDC_A_DATE:     delete    static_cast <QVector <QDate>     *> (workObjectNode->object); break;
-                case DDC_A_DATETIME: delete    static_cast <QVector <QDateTime> *> (workObjectNode->object); break;
-                case DDC_A_BYTES:    delete    static_cast <QVector <QByteArray>*> (workObjectNode->object); break;
-                case DDC_A_STRING:   delete    static_cast <QVector <QString>   *> (workObjectNode->object); break;
-                default:             delete    static_cast <QVector <qint64>    *> (workObjectNode->object);           // Array [long, double, number, s_number]
+                case DDC_A_TIME:
+                case DDC_A_DATE:
+                case DDC_A_INT:    delete    static_cast <QVector <int>       *> (workObjectNode->object); break;
+                case DDC_A_BYTES:  delete    static_cast <QVector <QByteArray>*> (workObjectNode->object); break;
+                case DDC_A_STRING: delete    static_cast <QVector <QString>   *> (workObjectNode->object); break;
+                default:           delete    static_cast <QVector <qint64>    *> (workObjectNode->object);           // Array [long, double, number, s_number, datetime]
         }
 
         delete workObjectNode;
@@ -70,20 +70,20 @@ DDManager::~DDManager ()
 //  # get #
 //  #=====#
 
-int DDManager::getDataCount       () {return dataCount;}
-int DDManager::getPropertiesCount () {return propertiesCount;}
+int                   DDManager::getDataNumber        ()       {return dataNumber;}
+int                   DDManager::getPropertiesNumber  ()       {return propertiesNumber;}
 
-char                  DDManager::getByte    (int id) {return static_cast <char>  (reinterpret_cast <qint64> (getData (id, DDC_BYTE)));}
-short                 DDManager::getShort   (int id) {return static_cast <short> (reinterpret_cast <qint64> (getData (id, DDC_SHORT)));}
-int                   DDManager::getInt     (int id) {return static_cast <int>   (reinterpret_cast <qint64> (getData (id, DDC_INT)));}
+char                  DDManager::getByte              (int id) {return static_cast <char>  (reinterpret_cast <qint64> (getData (id, DDC_BYTE)));}
+short                 DDManager::getShort             (int id) {return static_cast <short> (reinterpret_cast <qint64> (getData (id, DDC_SHORT)));}
+int                   DDManager::getInt               (int id) {return static_cast <int>   (reinterpret_cast <qint64> (getData (id, DDC_INT)));}
+int                   DDManager::getTime              (int id) {return static_cast <int>   (reinterpret_cast <qint64> (getData (id, DDC_TIME)));}
+int                   DDManager::getDate              (int id) {return static_cast <int>   (reinterpret_cast <qint64> (getData (id, DDC_DATE)));}
 
 qint64                DDManager::getLong              (int id) {return  reinterpret_cast <qint64>           (getData (id, DDC_LONG));}
 qint64                DDManager::getNumber            (int id) {return  reinterpret_cast <qint64>           (getData (id, DDC_NUMBER));}
 qint64                DDManager::getSignedNumber      (int id) {return  reinterpret_cast <qint64>           (getData (id, DDC_S_NUMBER));}
+qint64                DDManager::getDateTime          (int id) {return  reinterpret_cast <qint64>           (getData (id, DDC_DATETIME));}
 
-QTime                &DDManager::getTime              (int id) {return *static_cast <QTime     *>           (getData (id, DDC_TIME));}
-QDate                &DDManager::getDate              (int id) {return *static_cast <QDate     *>           (getData (id, DDC_DATE));}
-QDateTime            &DDManager::getDateTime          (int id) {return *static_cast <QDateTime *>           (getData (id, DDC_DATETIME));}
 QByteArray           &DDManager::getBytes             (int id) {return *static_cast <QByteArray*>           (getData (id, DDC_BYTES));}
 QString              &DDManager::getString            (int id) {return *static_cast <QString   *>           (getData (id, DDC_STRING));}
 DDList               &DDManager::getList              (int id) {return *static_cast <DDList    *>           (getData (id, DDC_LIST));}
@@ -96,9 +96,9 @@ QVector <float>      &DDManager::getFloatArray        (int id) {return *static_c
 QVector <double>     &DDManager::getDoubleArray       (int id) {return *static_cast <QVector <double>    *> (getData (id, DDC_A_DOUBLE));}
 QVector <qint64>     &DDManager::getNumberArray       (int id) {return *static_cast <QVector <qint64>    *> (getData (id, DDC_A_NUMBER));}
 QVector <qint64>     &DDManager::getSignedNumberArray (int id) {return *static_cast <QVector <qint64>    *> (getData (id, DDC_A_S_NUMBER));}
-QVector <QTime>      &DDManager::getTimeArray         (int id) {return *static_cast <QVector <QTime>     *> (getData (id, DDC_A_TIME));}
-QVector <QDate>      &DDManager::getDateArray         (int id) {return *static_cast <QVector <QDate>     *> (getData (id, DDC_A_DATE));}
-QVector <QDateTime>  &DDManager::getDateTimeArray     (int id) {return *static_cast <QVector <QDateTime> *> (getData (id, DDC_A_DATETIME));}
+QVector <int>        &DDManager::getTimeArray         (int id) {return *static_cast <QVector <int>       *> (getData (id, DDC_A_TIME));}
+QVector <int>        &DDManager::getDateArray         (int id) {return *static_cast <QVector <int>       *> (getData (id, DDC_A_DATE));}
+QVector <qint64>     &DDManager::getDateTimeArray     (int id) {return *static_cast <QVector <qint64>    *> (getData (id, DDC_A_DATETIME));}
 QVector <QByteArray> &DDManager::getBytesArray        (int id) {return *static_cast <QVector <QByteArray>*> (getData (id, DDC_A_BYTES));}
 QVector <QString>    &DDManager::getStringArray       (int id) {return *static_cast <QVector <QString>   *> (getData (id, DDC_A_STRING));}
 
@@ -146,7 +146,11 @@ void *DDManager::getData (int id, int type)
         checked [id] = true;
     }
 
-    if (type != dataTypes [id]) unexpectedData (id, dataTypes [id], type);
+    if (type != dataTypes [id] &&
+       (type <  DDC_LONG   ||  type > DDC_S_NUMBER   || dataTypes [id] < DDC_LONG   || dataTypes [id] > DDC_S_NUMBER) &&
+       (type <  DDC_A_LONG ||  type > DDC_A_S_NUMBER || dataTypes [id] < DDC_A_LONG || dataTypes [id] > DDC_A_S_NUMBER))
+            DDBuffer::unexpectedData (id, dataTypes [id], type);
+
     return data;
 }
 
@@ -158,6 +162,43 @@ DDProps *DDManager::getProperties (int id)
 {
     if (id < 0 || id > 4095) DDException (DDE_INVALID_ID, id);
     return static_cast <DDProps*> (seekObject (id, propertiesRoot));
+}
+
+void DDManager::getProperties (QVector <DDProps> &properties)
+{
+    properties.resize (propertiesNumber);
+    if (propertiesNumber == 0) return;
+
+    DDProps *props;
+    void    *propsTable1, *propsTable2;
+    int      i, j, k, x =  0;
+
+    for (i = 0; i < 16; i++)
+    {
+        if (!(propsTable1 = propertiesRoot [i])) continue;
+
+        for (j = 0; j < 16; j++)
+        {
+            if (!(propsTable2 = static_cast <void **> (propsTable1) [j])) continue;
+
+            for (k = 0; k < 16; k++)
+                if (!(props = static_cast <DDProps **> (propsTable2) [k])) properties.data () [x++] = *props;
+        }
+    }
+}
+
+//  #===================#
+//  # getListProperties #
+//  #===================#
+
+QVector <DDProps> *DDManager::getListProperties (int id)
+{
+    if (id < 0 || id > 4095) DDException (DDE_INVALID_ID, id);
+
+    if (dataTypes [id] != DDC_LIST)
+        DDException (DDE_INVALID_DATA_TYPE, id, DDBuffer::STRING_TYPES [DDC_LIST], DDBuffer::STRING_TYPES [dataTypes [id]]);
+
+    return static_cast <DDList *> (seekObject (id, dataRoot))->getProperties ();
 }
 
 //  #====#
@@ -183,8 +224,8 @@ bool DDManager::isDataPresent (int id)
 //  # set #
 //  #=====#
 
-void DDManager::setDataCheck   (bool dataCheck)   {this->dataCheck   = dataCheck;}
-void DDManager::setDataDefault (bool dataDefault) {this->dataDefault = dataDefault;}
+void DDManager::setDataCheck         (bool dataCheck)   {this->dataCheck   = dataCheck;}
+void DDManager::setDataDefault       (bool dataDefault) {this->dataDefault = dataDefault;}
 
 void DDManager::setByte              (int id, char   data) {setData (id, reinterpret_cast <void *> (static_cast <qint64> (data)), DDC_BYTE);}
 void DDManager::setShort             (int id, short  data) {setData (id, reinterpret_cast <void *> (static_cast <qint64> (data)), DDC_SHORT);}
@@ -193,19 +234,22 @@ void DDManager::setInt               (int id, int    data) {setData (id, reinter
 void DDManager::setLong              (int id, qint64 data) {setData (id, reinterpret_cast <void *> (data), DDC_LONG);}
 void DDManager::setSignedNumber      (int id, qint64 data) {setData (id, reinterpret_cast <void *> (data), DDC_S_NUMBER);}
 
-void DDManager::setBytes             (int id, QByteArray           &data) {setData (id, &data, DDC_BYTES);}
-void DDManager::setString            (int id, QString              &data) {setData (id, &data, DDC_STRING);}
-void DDManager::setList              (int id, DDList               &data) {setData (id, &data, DDC_LIST);}
+void DDManager::setBytes             (int id, const QByteArray           &data) {setData (id, &data, DDC_BYTES);}
+void DDManager::setString            (int id, const QString              &data) {setData (id, &data, DDC_STRING);}
+void DDManager::setList              (int id, const DDList               &data) {setData (id, &data, DDC_LIST);}
 
-void DDManager::setByteArray         (int id, QVector <char>       &data) {setData (id, &data, DDC_A_BYTE);}
-void DDManager::setShortArray        (int id, QVector <short>      &data) {setData (id, &data, DDC_A_SHORT);}
-void DDManager::setIntArray          (int id, QVector <int>        &data) {setData (id, &data, DDC_A_INT);}
-void DDManager::setLongArray         (int id, QVector <qint64>     &data) {setData (id, &data, DDC_A_LONG);}
-void DDManager::setFloatArray        (int id, QVector <float>      &data) {setData (id, &data, DDC_A_FLOAT);}
-void DDManager::setDoubleArray       (int id, QVector <double>     &data) {setData (id, &data, DDC_A_DOUBLE);}
-void DDManager::setSignedNumberArray (int id, QVector <qint64>     &data) {setData (id, &data, DDC_A_S_NUMBER);}
-void DDManager::setBytesArray        (int id, QVector <QByteArray> &data) {setData (id, &data, DDC_A_BYTES);}
-void DDManager::setStringArray       (int id, QVector <QString>    &data) {setData (id, &data, DDC_A_STRING);}
+void DDManager::setByteArray         (int id, const QVector <char>       &data) {setData (id, &data, DDC_A_BYTE);}
+void DDManager::setShortArray        (int id, const QVector <short>      &data) {setData (id, &data, DDC_A_SHORT);}
+void DDManager::setIntArray          (int id, const QVector <int>        &data) {setData (id, &data, DDC_A_INT);}
+void DDManager::setLongArray         (int id, const QVector <qint64>     &data) {setData (id, &data, DDC_A_LONG);}
+void DDManager::setFloatArray        (int id, const QVector <float>      &data) {setData (id, &data, DDC_A_FLOAT);}
+void DDManager::setDoubleArray       (int id, const QVector <double>     &data) {setData (id, &data, DDC_A_DOUBLE);}
+void DDManager::setSignedNumberArray (int id, const QVector <qint64>     &data) {setData (id, &data, DDC_A_S_NUMBER);}
+void DDManager::setBytesArray        (int id, const QVector <QByteArray> &data) {setData (id, &data, DDC_A_BYTES);}
+void DDManager::setStringArray       (int id, const QVector <QString>    &data) {setData (id, &data, DDC_A_STRING);}
+
+void DDManager::setNumber (int id, qint64 data)
+    {setData (id, reinterpret_cast <void *> (data), (data < 0 ? DDC_S_NUMBER : DDC_NUMBER));}
 
 void DDManager::setFloat (int id, float data)
 {
@@ -219,58 +263,54 @@ void DDManager::setDouble (int id, double data)
     setData (id, reinterpret_cast <void *> (lv), DDC_DOUBLE);
 }
 
-void DDManager::setNumber (int id, qint64 data)
+void DDManager::setTime (int id, int data)
 {
-    if (data < 0) DDException (DDE_INVALID_DATA, id);
-    setData (id, reinterpret_cast <void *> (data), DDC_NUMBER);
+    if (!DDBuffer::isValidTime (data)) DDException (DDE_INVALID_DATA, id);
+    setData (id, reinterpret_cast <void *> (static_cast <qint64> (data)), DDC_TIME);
 }
 
-void DDManager::setTime (int id, QTime &data)
+void DDManager::setDate (int id, int data)
 {
-    if (!static_cast <QTime> (data).isValid ()) DDException (DDE_INVALID_DATA, id);
-    setData (id, &data, DDC_TIME);
+    if (!DDBuffer::isValidDate (data)) DDException (DDE_INVALID_DATA, id);
+    setData (id, reinterpret_cast <void *> (static_cast <qint64> (data)), DDC_DATE);
 }
 
-void DDManager::setDate (int id, QDate &data)
+void DDManager::setDateTime (int id, qint64 data)
 {
-    if (!static_cast <QDate> (data).isValid ()) DDException (DDE_INVALID_DATA, id);
-    setData (id, &data, DDC_DATE);
+    if (!DDBuffer::isValidDateTime (data)) DDException (DDE_INVALID_DATA, id);
+    setData (id, reinterpret_cast <void *> (data), DDC_DATETIME);
 }
 
-void DDManager::setDateTime (int id, QDateTime &data)
+void DDManager::setNumberArray (int id, const QVector <qint64> &data)
 {
-    if (!static_cast <QDateTime> (data).isValid ()) DDException (DDE_INVALID_DATA, id);
-    setData (id, &data, DDC_DATETIME);
+    int type = DDC_A_NUMBER;
+
+    for (int i = 0; i < data.size (); i++)
+        if (data.at (i) < 0) {type = DDC_A_S_NUMBER; break;}
+
+    setData (id, &data, type);
 }
 
-void DDManager::setNumberArray (int id, QVector <qint64> &data)
+void DDManager::setTimeArray (int id, const QVector <int> &data)
 {
     for (int i = 0; i < data.size (); i++)
-        if (data.at (i) < 0) DDException (DDE_INVALID_DATA, id);
-
-    setData (id, &data, DDC_A_NUMBER);
-}
-
-void DDManager::setTimeArray (int id, QVector <QTime> &data)
-{
-    for (int i = 0; i < data.size (); i++)
-        if (!data.at (i).isNull () && !data.at (i).isValid ()) DDException (DDE_INVALID_DATA, id);
+        if (!DDBuffer::isValidTime (data.at (i))) DDException (DDE_INVALID_DATA, id);
 
     setData (id, &data, DDC_A_TIME);
 }
 
-void DDManager::setDateArray (int id, QVector <QDate> &data)
+void DDManager::setDateArray (int id, const QVector <int> &data)
 {
     for (int i = 0; i < data.size (); i++)
-        if (!data.at (i).isNull () && !data.at (i).isValid ()) DDException (DDE_INVALID_DATA, id);
+        if (!DDBuffer::isValidDate (data.at (i))) DDException (DDE_INVALID_DATA, id);
 
     setData (id, &data, DDC_A_DATE);
 }
 
-void DDManager::setDateTimeArray (int id, QVector <QDateTime> &data)
+void DDManager::setDateTimeArray (int id, const QVector <qint64> &data)
 {
     for (int i = 0; i < data.size (); i++)
-        if (!data.at (i).isNull () && !data.at (i).isValid ()) DDException (DDE_INVALID_DATA, id);
+        if (!DDBuffer::isValidDateTime (data.at (i))) DDException (DDE_INVALID_DATA, id);
 
     setData (id, &data, DDC_A_DATETIME);
 }
@@ -279,7 +319,7 @@ void DDManager::setDateTimeArray (int id, QVector <QDateTime> &data)
 //  | setData |
 //  +---------+
 
-void DDManager::setData (int id, void *data, int type)
+void DDManager::setData (int id, const void *data, int type)
 {
     if (id < 0 || id > 4095) DDException (DDE_INVALID_ID, id);
     storeData (id, data, type);
@@ -291,15 +331,29 @@ void DDManager::setData (int id, void *data, int type)
 
 void DDManager::setProperties (DDProps &properties)
 {
-    void **propsTable = linkObject (properties.id, propertiesRoot);
+    const void **propsTable = linkObject (properties.id, propertiesRoot);
     if (propsTable [properties.id & 0x0F]) DDException (DDE_PROPERTIES_ALREADY_PRESENT, properties.id);
 
     propsTable [properties.id & 0x0F] = &properties;
-    propertiesCount++;
+    propertiesNumber++;
 }
 
 void DDManager::setProperties (QVector <DDProps> &properties)
     {for (int i = 0; i < properties.size (); i++) setProperties (properties [i]);}
+
+//  #===================#
+//  # setListProperties #
+//  #===================#
+
+void DDManager::setListProperties (int id, QVector <DDProps> &properties)
+{
+    if (id < 0 || id > 4095) DDException (DDE_INVALID_ID, id);
+
+    if (dataTypes [id] != DDC_LIST)
+        DDException (DDE_INVALID_DATA_TYPE, id, DDBuffer::STRING_TYPES [DDC_LIST], DDBuffer::STRING_TYPES [dataTypes [id]]);
+
+    static_cast <DDList *> (seekObject (id, dataRoot))->setProperties (properties);
+}
 
 //  +--------+
 //  | addNew |
@@ -314,31 +368,6 @@ void DDManager::addNew (void *data)
     newObjectList                 = newNode;
 }
 
-//  +----------------+
-//  | unexpectedData |
-//  +----------------+
-
-[[noreturn]] void DDManager::unexpectedData (int id, int expected, int requested)
-{
-    char expectedType  [32];
-    char requestedType [32];
-
-    int  expectedIdH  = expected  >> 4;
-    int  requestedIdH = requested >> 4;
-    int  i, j;
-
-    if (!expectedIdH) i = 0;
-    else i = snprintf (expectedType,  32, "%s", DDBuffer::STRING_TYPES [expectedIdH]);
-
-    if (!requestedIdH) j = 0;
-    else j = snprintf (requestedType, 32, "%s", DDBuffer::STRING_TYPES [requestedIdH]);
-
-    snprintf (expectedType  + i, 32 - static_cast <unsigned> (i), "%s",DDBuffer::STRING_TYPES [expected  & 0x0F]);
-    snprintf (requestedType + j, 32 - static_cast <unsigned> (j), "%s",DDBuffer::STRING_TYPES [requested & 0x0F]);
-
-    DDException (DDE_INVALID_DATA_TYPE, id, expectedType, requestedType);
-}
-
 //  +-----------+
 //  | checkData |
 //  +-----------+
@@ -349,45 +378,54 @@ void DDManager::checkData (int type, void *data, DDProps *props)    // return tr
 
     switch (dataType)
     {
+        default:           checkLong     (dataType, reinterpret_cast <qint64> (data), props); return;
+        case DDC_DOUBLE:   checkDouble   (dataType, reinterpret_cast <qint64> (data), props); return;
+        case DDC_DATETIME: checkDateTime (dataType, reinterpret_cast <qint64> (data), props); return;
+
         case DDC_BYTE:     checkByte     (dataType, static_cast <char>  (reinterpret_cast <qint64> (data)), props); return;
         case DDC_SHORT:    checkShort    (dataType, static_cast <short> (reinterpret_cast <qint64> (data)), props); return;
         case DDC_INT:      checkInt      (dataType, static_cast <int>   (reinterpret_cast <qint64> (data)), props); return;
-        case DDC_NUMBER:
-        case DDC_S_NUMBER:
-        case DDC_LONG:     checkLong     (dataType,                      reinterpret_cast <qint64> (data),  props); return;
         case DDC_FLOAT:    checkFloat    (dataType, static_cast <int>   (reinterpret_cast <qint64> (data)), props); return;
-        case DDC_DOUBLE:   checkDouble   (dataType,                      reinterpret_cast <qint64> (data),  props); return;
+        case DDC_TIME:     checkTime     (dataType, static_cast <int>   (reinterpret_cast <qint64> (data)), props); return;
+        case DDC_DATE:     checkDate     (dataType, static_cast <int>   (reinterpret_cast <qint64> (data)), props); return;
 
-        case DDC_TIME:     checkTime     (dataType, static_cast <QTime     *> (data), props); return;
-        case DDC_DATE:     checkDate     (dataType, static_cast <QDate     *> (data), props); return;
-        case DDC_DATETIME: checkDateTime (dataType, static_cast <QDateTime *> (data), props); return;
-        case DDC_BYTES:    checkBytes    (dataType, static_cast <QByteArray*> (data), props); return;
-        case DDC_STRING:   checkString   (dataType, static_cast <QString   *> (data), props); return;
+        case DDC_BYTES:    checkBytes    (dataType, static_cast <QByteArray *> (data), props); return;
+        case DDC_STRING:   checkString   (dataType, static_cast <QString    *> (data), props); return;
 
         case DDC_ARRAY:    checkArray    (type, data, props); return;
 
-        default:    // case DDC_LIST:
+        case DDC_LIST:
         {
-            if ((props->operType & 0x0F) != DDC_LIST) unexpectedData (props->id, props->operType & 0x0F, DDC_LIST);
+            if ((props->operType & 0x0F) != DDC_LIST) DDBuffer::unexpectedData (props->id, props->operType & 0x0F, DDC_LIST);
 
             DDList *value = static_cast <DDList *> (data);
-            int     i     = value->getDataCount ();
+            int     i     = value->getDataNumber ();
 
-            if (props->number > 0 && props->number != i) DDException (DDE_INVALID_STRUCT_SIZE, "list", props->id, i,  props->number);
-            if (props->number < 0 && props->number > -i) DDException (DDE_INVALID_STRUCT_SIZE, "list", props->id, i, -props->number);
+            if ((props->operType & DDC_CHKMIN) && i < props->min) DDException (DDE_INVALID_STRUCT_SIZE, "list", props->id, i, props->min);
+            if ((props->operType & DDC_CHKMAX) && i > props->max) DDException (DDE_INVALID_STRUCT_SIZE, "list", props->id, i, props->max);
 
-            DDProps           *itemProps;
-            QVector <DDProps> *propsTable = static_cast <QVector <DDProps> *> (props->inOrProps);
-            int                j, k       = propsTable->size ();
-            void              *obj;
+            if (props->in)
+            {
+                for (int x = 0; x < static_cast <QVector <DDList> *> (props->in)->size (); x++)
+                     if (compareList (value, &static_cast <QVector <DDList> *> (props->in)->data () [x])) return;
+
+                DDException (DDE_CHECK_IN_STRUCT, props->id, props->name);
+            }
+
+            QVector <DDProps> *propsTable = value->getProperties ();
+            if (!propsTable) DDException (DDE_LIST_PROPERTIES_NOT_FOUND, props->id);
+
+            DDProps *itemProps;
+            int      j, k = propsTable->size ();
+            void    *obj;
 
             value->begin ();
 
             while (!value->isEndOfList ())
             {
                 obj = value->getData (-1);
-                i   = value->getCurrentDataId   ();
-                j   = value->getCurrentDataType ();
+                i   = value->getCurrentDataOffset ();
+                j   = value->getCurrentDataType   ();
 
                 itemProps = &propsTable->data () [i % k];
 
@@ -401,20 +439,18 @@ void DDManager::checkData (int type, void *data, DDProps *props)    // return tr
                     case DDC_SHORT:    checkShort    (dataType, static_cast <short> (reinterpret_cast <qint64> (obj)), itemProps); continue;
                     case DDC_INT:      checkInt      (dataType, static_cast <int>   (reinterpret_cast <qint64> (obj)), itemProps); continue;
                     case DDC_FLOAT:    checkFloat    (dataType, static_cast <int>   (reinterpret_cast <qint64> (obj)), itemProps); continue;
+                    case DDC_TIME:     checkTime     (dataType, static_cast <int>   (reinterpret_cast <qint64> (obj)), itemProps); continue;
+                    case DDC_DATE:     checkDate     (dataType, static_cast <int>   (reinterpret_cast <qint64> (obj)), itemProps); continue;
                     case DDC_DOUBLE:   checkDouble   (dataType,                      reinterpret_cast <qint64> (obj),  itemProps); continue;
+                    case DDC_DATETIME: checkDateTime (dataType,                      reinterpret_cast <qint64> (obj),  itemProps); continue;
 
-                    case DDC_TIME:     checkTime     (dataType, static_cast <QTime     *> (obj), itemProps); continue;
-                    case DDC_DATE:     checkDate     (dataType, static_cast <QDate     *> (obj), itemProps); continue;
-                    case DDC_DATETIME: checkDateTime (dataType, static_cast <QDateTime *> (obj), itemProps); continue;
-                    case DDC_BYTES:    checkBytes    (dataType, static_cast <QByteArray*> (obj), itemProps); continue;
-                    case DDC_STRING:   checkString   (dataType, static_cast <QString   *> (obj), itemProps); continue;
+                    case DDC_BYTES:    checkBytes    (dataType, static_cast <QByteArray *> (obj), itemProps); continue;
+                    case DDC_STRING:   checkString   (dataType, static_cast <QString    *> (obj), itemProps); continue;
 
                     case DDC_ARRAY:    checkArray    (j, obj, itemProps); continue;
                     case DDC_NULL:;
                 }
             }
-
-            return;
         }
     }
 }
@@ -423,18 +459,18 @@ void DDManager::checkData (int type, void *data, DDProps *props)    // return tr
 //  | checkCommon |
 //  +-------------+
 
-bool DDManager::checkCommon (int type, qint64 value, DDProps *props)
+bool DDManager::checkCommon (int type, qint64 data, DDProps *props)
 {
-    if (type >= 0 && type != (props->operType & 0x0F)) unexpectedData (props->id, props->operType & 0x0F, type);
-    if (props->inOrProps) return false;
+    if (type >= 0 && type != (props->operType & 0x0F)) DDBuffer::unexpectedData (props->id, props->operType & 0x0F, type);
+    if (props->in) return false;
 
-    if ((props->operType & DDC_CHKMIN) && value < props->min)
+    if ((props->operType & DDC_CHKMIN) && data < props->min)
          DDException (DDE_CHECK_MIN, (type == DDC_BYTES || type == DDC_STRING ? "Size" : "Value"),
-                      props->id, props->name, value, props->min);
+                      props->id, props->name, data, props->min);
 
-    if ((props->operType & DDC_CHKMAX) && value > props->max)
+    if ((props->operType & DDC_CHKMAX) && data > props->max)
          DDException (DDE_CHECK_MAX, (type == DDC_BYTES || type == DDC_STRING ? "Size" : "Value"),
-                      props->id, props->name, value, props->max);
+                      props->id, props->name, data, props->max);
     return true;
 }
 
@@ -442,72 +478,72 @@ bool DDManager::checkCommon (int type, qint64 value, DDProps *props)
 //  | checkByte |
 //  +-----------+
 
-void DDManager::checkByte (int type, char value, DDProps *props)
+void DDManager::checkByte (int type, char data, DDProps *props)
 {
-    if (checkCommon (type, value, props)) return;
+    if (checkCommon (type, data, props)) return;
 
-    for (int i = 0; i < static_cast <QVector <char> *> (props->inOrProps)->size (); i++)
-         if (value   == static_cast <QVector <char> *> (props->inOrProps)->at  (i)) return;
+    for (int i = 0; i < static_cast <QVector <char> *> (props->in)->size (); i++)
+         if (data    == static_cast <QVector <char> *> (props->in)->at  (i)) return;
 
-    DDException (DDE_CHECK_IN, props->id, props->name, static_cast <qint64> (value));
+    DDException (DDE_CHECK_IN, props->id, props->name, static_cast <qint64> (data));
 }
 
 //  +------------+
 //  | checkShort |
 //  +------------+
 
-void DDManager::checkShort (int type, short value, DDProps *props)
+void DDManager::checkShort (int type, short data, DDProps *props)
 {
-    if (checkCommon (type, value, props)) return;
+    if (checkCommon (type, data, props)) return;
 
-    for (int i = 0; i < static_cast <QVector <short> *> (props->inOrProps)->size (); i++)
-         if (value   == static_cast <QVector <short> *> (props->inOrProps)->at  (i)) return;
+    for (int i = 0; i < static_cast <QVector <short> *> (props->in)->size (); i++)
+         if (data    == static_cast <QVector <short> *> (props->in)->at  (i)) return;
 
-    DDException (DDE_CHECK_IN, props->id, props->name, static_cast <qint64> (value));
+    DDException (DDE_CHECK_IN, props->id, props->name, static_cast <qint64> (data));
 }
 
 //  +----------+
 //  | checkInt |
 //  +----------+
 
-void DDManager::checkInt (int type, int value, DDProps *props)
+void DDManager::checkInt (int type, int data, DDProps *props)
 {
-    if (checkCommon (type, value, props)) return;
+    if (checkCommon (type, data, props)) return;
 
-    for (int i = 0; i < static_cast <QVector <int> *> (props->inOrProps)->size (); i++)
-         if (value   == static_cast <QVector <int> *> (props->inOrProps)->at  (i)) return;
+    for (int i = 0; i < static_cast <QVector <int> *> (props->in)->size (); i++)
+         if (data    == static_cast <QVector <int> *> (props->in)->at  (i)) return;
 
-    DDException (DDE_CHECK_IN, props->id, props->name, static_cast <qint64> (value));
+    DDException (DDE_CHECK_IN, props->id, props->name, static_cast <qint64> (data));
 }
 
 //  +-----------+
 //  | checkLong |
 //  +-----------+
 
-void DDManager::checkLong (int type, qint64 value, DDProps *props)
+void DDManager::checkLong (int type, qint64 data, DDProps *props)
 {
-    if (checkCommon (type, value, props)) return;
+    if (checkCommon (type, data, props)) return;
 
-    for (int i = 0; i < static_cast <QVector <qint64> *> (props->inOrProps)->size (); i++)
-         if (value   == static_cast <QVector <qint64> *> (props->inOrProps)->at  (i)) return;
+    for (int i = 0; i < static_cast <QVector <qint64> *> (props->in)->size (); i++)
+         if (data    == static_cast <QVector <qint64> *> (props->in)->at  (i)) return;
 
-    DDException (DDE_CHECK_IN, props->id, props->name, value);
+    DDException (DDE_CHECK_IN, props->id, props->name, data);
 }
 
 //  +------------+
 //  | checkFloat |
 //  +------------+
 
-void DDManager::checkFloat (int type, int value, DDProps *props)
+void DDManager::checkFloat (int type, int data, DDProps *props)
 {
-    if (type >= 0 && type != (props->operType & 0x0F)) unexpectedData (props->id, props->operType & 0x0F, type);
+    if (type >= 0 && type != (props->operType & 0x0F)) DDBuffer::unexpectedData (props->id, props->operType & 0x0F, type);
 
     union {float fv1; int iv1;};
     union {float fv2; int iv2;};
 
-    iv1 = value;
+    iv1 = data;
 
-    if (!props->inOrProps)
+    if (!props->in)
     {
         if ((props->operType & DDC_CHKMIN))
         {
@@ -526,8 +562,8 @@ void DDManager::checkFloat (int type, int value, DDProps *props)
         return;
     }
 
-    for (int i = 0; i < static_cast <QVector <int> *> (props->inOrProps)->size (); i++)
-         if (iv1     == static_cast <QVector <int> *> (props->inOrProps)->at  (i)) return;
+    for (int i = 0; i < static_cast <QVector <int> *> (props->in)->size (); i++)
+         if (iv1     == static_cast <QVector <int> *> (props->in)->at  (i)) return;
 
     DDException (DDE_CHECK_IN_FLOAT, props->id, props->name, static_cast <double> (fv1), static_cast <qint64> (iv1));
 }
@@ -536,16 +572,16 @@ void DDManager::checkFloat (int type, int value, DDProps *props)
 //  | checkDouble |
 //  +-------------+
 
-void DDManager::checkDouble (int type, qint64 value, DDProps *props)
+void DDManager::checkDouble (int type, qint64 data, DDProps *props)
 {
-    if (type >= 0 && type != (props->operType & 0x0F)) unexpectedData (props->id, props->operType & 0x0F, type);
+    if (type >= 0 && type != (props->operType & 0x0F)) DDBuffer::unexpectedData (props->id, props->operType & 0x0F, type);
 
     union {double dv1; qint64 lv1;};
     union {double dv2; qint64 lv2;};
 
-    lv1 = value;
+    lv1 = data;
 
-    if (!props->inOrProps)
+    if (!props->in)
     {
         if ((props->operType & DDC_CHKMIN))
         {
@@ -562,8 +598,8 @@ void DDManager::checkDouble (int type, qint64 value, DDProps *props)
         return;
     }
 
-    for (int i = 0; i < static_cast <QVector <qint64> *> (props->inOrProps)->size (); i++)
-         if (lv1     == static_cast <QVector <qint64> *> (props->inOrProps)->at  (i)) return;
+    for (int i = 0; i < static_cast <QVector <qint64> *> (props->in)->size (); i++)
+         if (lv1     == static_cast <QVector <qint64> *> (props->in)->at  (i)) return;
 
     DDException (DDE_CHECK_IN_FLOAT, props->id, props->name, dv1, lv1);
 }
@@ -572,140 +608,113 @@ void DDManager::checkDouble (int type, qint64 value, DDProps *props)
 //  | checkTime |
 //  +-----------+
 
-void DDManager::checkTime (int type, QTime *value, DDProps *props)
+void DDManager::checkTime (int type, int data, DDProps *props)
 {
-    if (!value->isNull ())
-    {
-        qint64 time = value->hour   () * 10000000 +
-                      value->minute () *   100000 +
-                      value->second () *     1000 +
-                      value->msec   ();
+    if (checkCommon (type, data, props)) return;
 
-        if (checkCommon (type, time, props)) return;
+    for (int i = 0; i < static_cast <QVector <int> *> (props->in)->size (); i++)
+         if (data    == static_cast <QVector <int> *> (props->in)->at  (i)) return;
 
-        for (int i = 0; i < static_cast <QVector <QTime> *> (props->inOrProps)->size (); i++)
-             if (*value  == static_cast <QVector <QTime> *> (props->inOrProps)->at  (i)) return;
-    }
-    else
-        if (!(props->operType & DDC_CHKLIM))
-        {
-            if (!props->inOrProps) return;
-            else for (int i = 0; i < static_cast <QVector <QTime> *> (props->inOrProps)->size (); i++)
-                      if (static_cast <QVector <QTime> *> (props->inOrProps)->at (i).isNull ()) return;
-        }
+    int ms  = data % 1000;    data /= 1000;
+    int sec = data % 100;     data /= 100;
+    int min = data % 100;     data /= 100;
 
-    DDException (DDE_CHECK_IN_STRING, props->id, props->name,
-                (value->isNull () ? "null" : value->toString ("HH:mm:ss.zzz").toUtf8 ().data ()));
+    char tmp [64];
+    snprintf (tmp, sizeof (tmp), "%02d:%02d:%02d.%03d", data, min, sec, ms);
+
+    DDException (DDE_CHECK_IN_STRING, props->id, props->name, tmp);
 }
 
 //  +-----------+
 //  | checkDate |
 //  +-----------+
 
-void DDManager::checkDate (int type, QDate *value, DDProps *props)
+void DDManager::checkDate (int type, int data, DDProps *props)
 {
-    if (!value->isNull ())
-    {
-        qint64 date = value->year  () * 10000 +
-                      value->month () *   100 +
-                      value->day   ();
+    if (checkCommon (type, data, props)) return;
 
-        if (checkCommon (type, date, props)) return;
+    for (int i = 0; i < static_cast <QVector <int> *> (props->in)->size (); i++)
+         if (data    == static_cast <QVector <int> *> (props->in)->at  (i)) return;
 
-        for (int i = 0; i < static_cast <QVector <QDate> *> (props->inOrProps)->size (); i++)
-             if (*value  == static_cast <QVector <QDate> *> (props->inOrProps)->at  (i)) return;
-    }
-    else
-        if (!(props->operType & DDC_CHKLIM))
-        {
-            if (!props->inOrProps) return;
-            else for (int i = 0; i < static_cast <QVector <QDate> *> (props->inOrProps)->size (); i++)
-                      if (static_cast <QVector <QDate> *> (props->inOrProps)->at (i).isNull ()) return;
-        }
+    int day = data % 100;    data /= 100;
+    int mon = data % 100;    data /= 100;
 
-    DDException (DDE_CHECK_IN_STRING, props->id, props->name,
-                (value->isNull () ? "null" : value->toString ("yyyy-MM-dd").toUtf8 ().data ()));
+    char tmp [64];
+    snprintf (tmp, sizeof (tmp), "%04d-%02d-%02d", data, mon, day);
+
+    DDException (DDE_CHECK_IN_STRING, props->id, props->name, tmp);
 }
 
 //  +---------------+
 //  | checkDateTime |
 //  +---------------+
 
-void DDManager::checkDateTime (int type, QDateTime *value, DDProps *props)
+void DDManager::checkDateTime (int type, qint64 data, DDProps *props)
 {
-    if (!value->isNull ())
-    {
-        qint64 datetime = value->date ().year   () * 10000000000000 +
-                          value->date ().month  () *   100000000000 +
-                          value->date ().day    () *     1000000000 +
-                          value->time ().hour   () *       10000000 +
-                          value->time ().minute () *         100000 +
-                          value->time ().second () *           1000 +
-                          value->time ().msec   ();
+    if (checkCommon (type, data, props)) return;
 
-        if (checkCommon (type, datetime, props)) return;
+    for (int i = 0; i < static_cast <QVector <qint64> *> (props->in)->size (); i++)
+         if (data    == static_cast <QVector <qint64> *> (props->in)->at  (i)) return;
 
-        for (int i = 0; i < static_cast <QVector <QDateTime> *> (props->inOrProps)->size (); i++)
-             if (*value  == static_cast <QVector <QDateTime> *> (props->inOrProps)->at  (i)) return;
-    }
-    else
-        if (!(props->operType & DDC_CHKLIM))
-        {
-            if (!props->inOrProps) return;
-            else for (int i = 0; i < static_cast <QVector <QDateTime> *> (props->inOrProps)->size (); i++)
-                      if (static_cast <QVector <QDateTime> *> (props->inOrProps)->at (i).isNull ()) return;
-        }
+    int ms   = data % 1000;    data /= 1000;
+    int sec  = data % 100;     data /= 100;
+    int min  = data % 100;     data /= 100;
+    int hour = data % 100;     data /= 100;
+    int day  = data % 100;     data /= 100;
+    int mon  = data % 100;     data /= 100;
 
-    DDException (DDE_CHECK_IN_STRING, props->id, props->name,
-                (value->isNull () ? "null" : value->toString ("yyyy-MM-dd_HH:mm:ss.zzz").toUtf8 ().data ()));
+    char tmp [64];
+    snprintf (tmp, sizeof (tmp), "%04lld-%02d-%02d_%02d:%02d:%02d.%03d", data, mon, day, hour, min, sec, ms);
+
+    DDException (DDE_CHECK_IN_STRING, props->id, props->name, tmp);
 }
 
 //  +------------+
 //  | checkBytes |
 //  +------------+
 
-void DDManager::checkBytes (int type, QByteArray *value, DDProps *props)
+void DDManager::checkBytes (int type, QByteArray *data, DDProps *props)
 {
-    if (!value->isNull ())
+    if (!data->isNull ())
     {
-        if (checkCommon (type, value->size (), props)) return;
+        if (checkCommon (type, data->size (), props)) return;
 
-        for (int i = 0; i < static_cast <QVector <QByteArray> *> (props->inOrProps)->size (); i++)
-             if (*value  == static_cast <QVector <QByteArray> *> (props->inOrProps)->at  (i)) return;
+        for (int i = 0; i < static_cast <QVector <QByteArray> *> (props->in)->size (); i++)
+             if (*data   == static_cast <QVector <QByteArray> *> (props->in)->at  (i)) return;
     }
     else
         if (!(props->operType & DDC_CHKLIM))
         {
-            if (!props->inOrProps) return;
-            else for (int i = 0; i < static_cast <QVector <QByteArray> *> (props->inOrProps)->size (); i++)
-                      if (static_cast <QVector <QByteArray> *> (props->inOrProps)->at (i).isNull ()) return;
+            if (!props->in) return;
+            else for (int i = 0; i < static_cast <QVector <QByteArray> *> (props->in)->size (); i++)
+                      if (static_cast <QVector <QByteArray> *> (props->in)->at (i).isNull ()) return;
         }
 
-    DDException (DDE_CHECK_IN_STRING, props->id, props->name, (value->isNull () ? "null" : value->toHex ().data ()));
+    DDException (DDE_CHECK_IN_STRING, props->id, props->name, (data->isNull () ? "null" : data->toHex ().data ()));
 }
 
 //  +-------------+
 //  | checkString |
 //  +-------------+
 
-void DDManager::checkString (int type, QString *value, DDProps *props)
+void DDManager::checkString (int type, QString *data, DDProps *props)
 {
-    if (!value->isNull ())
+    if (!data->isNull ())
     {
-        if (checkCommon (type, value->size (), props)) return;
+        if (checkCommon (type, data->size (), props)) return;
 
-        for (int i = 0; i < static_cast <QVector <QString> *> (props->inOrProps)->size (); i++)
-             if (*value  == static_cast <QVector <QString> *> (props->inOrProps)->at  (i)) return;
+        for (int i = 0; i < static_cast <QVector <QString> *> (props->in)->size (); i++)
+             if (*data   == static_cast <QVector <QString> *> (props->in)->at  (i)) return;
     }
     else
         if (!(props->operType & DDC_CHKLIM))
         {
-            if (!props->inOrProps) return;
-            else for (int i = 0; i < static_cast <QVector <QString> *> (props->inOrProps)->size (); i++)
-                      if (static_cast <QVector <QString> *> (props->inOrProps)->at (i).isNull ()) return;
+            if (!props->in) return;
+            else for (int i = 0; i < static_cast <QVector <QString> *> (props->in)->size (); i++)
+                      if (static_cast <QVector <QString> *> (props->in)->at (i).isNull ()) return;
         }
 
-    DDException (DDE_CHECK_IN_STRING, props->id, props->name, (value->isNull () ? "null" : value->toUtf8 ().data ()));
+    DDException (DDE_CHECK_IN_STRING, props->id, props->name, (data->isNull () ? "null" : data->toUtf8 ().data ()));
 }
 
 //  +------------+
@@ -714,193 +723,175 @@ void DDManager::checkString (int type, QString *value, DDProps *props)
 
 void DDManager::checkArray (int type, void *data, DDProps *props)
 {
-    if (type != (props->operType & 0xFF)) unexpectedData (props->id, props->operType & 0xFF, type);
-
+    if (type != (props->operType & 0xFF)) DDBuffer::unexpectedData (props->id, props->operType & 0xFF, type);
     int len = static_cast <QVector <int> *> (data)->size ();
 
-    if (props->number > 0 && props->number != len) DDException (DDE_INVALID_STRUCT_SIZE, "array", props->id, len,  props->number);
-    if (props->number < 0 && props->number > -len) DDException (DDE_INVALID_STRUCT_SIZE, "array", props->id, len, -props->number);
+    if (props->number > 0 && props->number != len)
+        DDException (DDE_INVALID_STRUCT_SIZE, "array", props->id, len, static_cast <qint64> ( props->number));
+
+    if (props->number < 0 && props->number > -len)
+        DDException (DDE_INVALID_STRUCT_SIZE, "array", props->id, len, static_cast <qint64> (-props->number));
+
+    if (props->in)
+    {
+        for (int x = 0; x < static_cast <QVector <QVector <int>> *> (props->in)->size (); x++)
+             if (compareArray (type, data, &static_cast <QVector <QVector <int>> *> (props->in)->data () [x])) return;
+
+        DDException (DDE_CHECK_IN_STRUCT, props->id, props->name);
+    }
 
     int i = 0;
 
     switch (type >> 4)
     {
-        case DDC_BYTE:      for (; i < len; i++) checkByte     (-1,  static_cast <QVector <char>      *> (data)->data () [i], props); break;
-        case DDC_SHORT:     for (; i < len; i++) checkShort    (-1,  static_cast <QVector <short>     *> (data)->data () [i], props); break;
-        case DDC_INT:       for (; i < len; i++) checkInt      (-1,  static_cast <QVector <int>       *> (data)->data () [i], props); break;
-        case DDC_NUMBER:
-        case DDC_S_NUMBER:
-        case DDC_LONG:      for (; i < len; i++) checkLong     (-1,  static_cast <QVector <qint64>    *> (data)->data () [i], props); break;
-        case DDC_FLOAT:     for (; i < len; i++) checkFloat    (-1,  static_cast <QVector <int>       *> (data)->data () [i], props); break;
-        case DDC_DOUBLE:    for (; i < len; i++) checkDouble   (-1,  static_cast <QVector <qint64>    *> (data)->data () [i], props); break;
-        case DDC_TIME:      for (; i < len; i++) checkTime     (-1, &static_cast <QVector <QTime>     *> (data)->data () [i], props); break;
-        case DDC_DATE:      for (; i < len; i++) checkDate     (-1, &static_cast <QVector <QDate>     *> (data)->data () [i], props); break;
-        case DDC_DATETIME:  for (; i < len; i++) checkDateTime (-1, &static_cast <QVector <QDateTime> *> (data)->data () [i], props); break;
-        case DDC_BYTES:     for (; i < len; i++) checkBytes    (-1, &static_cast <QVector <QByteArray>*> (data)->data () [i], props); break;
-        default:            for (; i < len; i++) checkString   (-1, &static_cast <QVector <QString>   *> (data)->data () [i], props);
+        default:           for (; i < len; i++) checkLong     (-1,  static_cast <QVector <qint64>    *> (data)->data () [i], props); break;
+        case DDC_BYTE:     for (; i < len; i++) checkByte     (-1,  static_cast <QVector <char>      *> (data)->data () [i], props); break;
+        case DDC_SHORT:    for (; i < len; i++) checkShort    (-1,  static_cast <QVector <short>     *> (data)->data () [i], props); break;
+        case DDC_INT:      for (; i < len; i++) checkInt      (-1,  static_cast <QVector <int>       *> (data)->data () [i], props); break;
+        case DDC_FLOAT:    for (; i < len; i++) checkFloat    (-1,  static_cast <QVector <int>       *> (data)->data () [i], props); break;
+        case DDC_DOUBLE:   for (; i < len; i++) checkDouble   (-1,  static_cast <QVector <qint64>    *> (data)->data () [i], props); break;
+        case DDC_TIME:     for (; i < len; i++) checkTime     (-1,  static_cast <QVector <int>       *> (data)->data () [i], props); break;
+        case DDC_DATE:     for (; i < len; i++) checkDate     (-1,  static_cast <QVector <int>       *> (data)->data () [i], props); break;
+        case DDC_DATETIME: for (; i < len; i++) checkDateTime (-1,  static_cast <QVector <qint64>    *> (data)->data () [i], props); break;
+        case DDC_BYTES:    for (; i < len; i++) checkBytes    (-1, &static_cast <QVector <QByteArray>*> (data)->data () [i], props); break;
+        case DDC_STRING:   for (; i < len; i++) checkString   (-1, &static_cast <QVector <QString>   *> (data)->data () [i], props);
     }
 }
 
-//  +------------------+
-//  | checkDataDefault |
-//  +------------------+
+//  +-------------+
+//  | compareData |
+//  +-------------+
 
-bool DDManager::checkDataDefault (int type, void *data1, void *data2)
+bool DDManager::compareData (int type, const void *data1, void *data2)
 {
     switch (type & 0x0F)
     {
-        case DDC_BYTE:      return  static_cast <char>  (reinterpret_cast <qint64> (data1)) == *static_cast <char  *> (data2);
-        case DDC_SHORT:     return  static_cast <short> (reinterpret_cast <qint64> (data1)) == *static_cast <short *> (data2);
+        default:         return  reinterpret_cast <qint64> (data1) == *static_cast <qint64 *> (data2);
+
+        case DDC_BYTE:   return  static_cast <char>  (reinterpret_cast <qint64> (data1)) == *static_cast <char  *> (data2);
+        case DDC_SHORT:  return  static_cast <short> (reinterpret_cast <qint64> (data1)) == *static_cast <short *> (data2);
         case DDC_FLOAT:
-        case DDC_INT:       return  static_cast <int>   (reinterpret_cast <qint64> (data1)) == *static_cast <int   *> (data2);
-        case DDC_DOUBLE:
-        case DDC_NUMBER:
-        case DDC_S_NUMBER:
-        case DDC_LONG:      return  reinterpret_cast <qint64> (data1) == *static_cast <qint64    *> (data2);
+        case DDC_TIME:
+        case DDC_DATE:
+        case DDC_INT:    return  static_cast <int>   (reinterpret_cast <qint64> (data1)) == *static_cast <int   *> (data2);
 
-        case DDC_TIME:      return *static_cast <QTime     *> (data1) == *static_cast <QTime     *> (data2);
-        case DDC_DATE:      return *static_cast <QDate     *> (data1) == *static_cast <QDate     *> (data2);
-        case DDC_DATETIME:  return *static_cast <QDateTime *> (data1) == *static_cast <QDateTime *> (data2);
+        case DDC_BYTES:  return  static_cast <const QByteArray *> (data1)->size () ==  static_cast <QByteArray *> (data2)->size () &&
+                                *static_cast <const QByteArray *> (data1)          == *static_cast <QByteArray *> (data2);
 
-        case DDC_BYTES:     return  static_cast <QByteArray*> (data1)->size () ==  static_cast <QByteArray *> (data2)->size () &&
-                                   *static_cast <QByteArray*> (data1)          == *static_cast <QByteArray *> (data2);
+        case DDC_STRING: return  static_cast <const QString    *> (data1)->size () ==  static_cast <QString    *> (data2)->size () &&
+                                *static_cast <const QString    *> (data1)          == *static_cast <QString    *> (data2);
 
-        case DDC_STRING:    return  static_cast <QString   *> (data1)->size () ==  static_cast <QString    *> (data2)->size () &&
-                                   *static_cast <QString   *> (data1)          == *static_cast <QString    *> (data2);
+        case DDC_ARRAY:  return  compareArray (type, data1, data2);
+        case DDC_LIST:
 
-        case DDC_ARRAY:     return  checkArrayDefault (type, data1, data2);
+            union {DDList *list; const void *data1c;};
 
-        default:    // case DDC_LIST:
-        {
-            DDList *list    = static_cast <DDList *> (data1);
-            DDList *listDef = static_cast <DDList *> (data2);
-
-            if (list->getDataCount () != static_cast <DDList *> (listDef)->getDataCount ()) return false;
-
-            void *obj, *objDef;
-            int   i,    j;
-
-            list->begin    ();
-            listDef->begin ();
-
-            while (!list->isEndOfList ())
-            {
-                obj    = list->getData    (-1);
-                objDef = listDef->getData (-1);
-                i      = list->getCurrentDataType    ();
-                j      = listDef->getCurrentDataType ();
-
-                list->next   ();
-                listDef->next ();
-
-                if (i == DDC_NULL || j == DDC_NULL)
-                {
-                    if (!obj && !objDef) continue;
-                    else return false;
-                }
-
-                if (i != j) return false;
-
-                switch (i & 0x0F)
-                {
-                    default:            if (reinterpret_cast <qint64> (obj) ==
-                                            reinterpret_cast <qint64> (objDef)) continue; else return false;    // long, double, number, s_number
-
-                    case DDC_BYTE:      if (static_cast <char>  (reinterpret_cast <qint64> (obj)) ==
-                                            static_cast <char>  (reinterpret_cast <qint64> (objDef))) continue; else return false;
-
-                    case DDC_SHORT:     if (static_cast <short> (reinterpret_cast <qint64> (obj)) ==
-                                            static_cast <short> (reinterpret_cast <qint64> (objDef))) continue; else return false;
-                    case DDC_FLOAT:
-                    case DDC_INT:       if (static_cast <int>   (reinterpret_cast <qint64> (obj)) ==
-                                            static_cast <int>   (reinterpret_cast <qint64> (objDef))) continue; else return false;
-
-                    case DDC_TIME:      if (*static_cast <QTime     *> (obj) ==
-                                            *static_cast <QTime     *> (objDef)) continue; else return false;
-
-                    case DDC_DATE:      if (*static_cast <QDate     *> (obj) ==
-                                            *static_cast <QDate     *> (objDef)) continue; else return false;
-
-                    case DDC_DATETIME:  if (*static_cast <QDateTime *> (obj) ==
-                                            *static_cast <QDateTime *> (objDef)) continue; else return false;
-
-                    case DDC_BYTES:     if (*static_cast <QByteArray*> (obj) ==
-                                            *static_cast <QByteArray*> (objDef)) continue; else return false;
-
-                    case DDC_STRING:    if (*static_cast <QString   *> (obj) ==
-                                            *static_cast <QString   *> (objDef)) continue; else return false;
-
-                    case DDC_ARRAY:     if (!checkArrayDefault (i, obj, objDef)) return false;
-                }
-            }
-
-            return true;
-        }
+            data1c = data1;
+            return compareList (list, static_cast <DDList *> (data2));
     }
 }
 
-//  +-------------------+
-//  | checkArrayDefault |
-//  +-------------------+
+//  +--------------+
+//  | compareArray |
+//  +--------------+
 
-bool DDManager::checkArrayDefault (int type, void *array1, void *array2)
+bool DDManager::compareArray (int type, const void *array1, void *array2)
 {
-    int len  = static_cast <QVector <int> *> (array1)->size ();
-    if (len != static_cast <QVector <int> *> (array2)->size ()) return false;
+    int len  = static_cast <const QVector <int> *> (array1)->size ();
+    if (len != static_cast       <QVector <int> *> (array2)->size ()) return false;
 
     switch (type >> 4)
     {
-        default:        return !memcmp (static_cast <QVector <qint64>*> (array1)->data (),
-                                        static_cast <QVector <qint64>*> (array2)->data (), static_cast <size_t> (len));
+        default:        return !memcmp (static_cast <const QVector <qint64> *> (array1)->data (),
+                                        static_cast       <QVector <qint64> *> (array2)->data (), static_cast <size_t> (len << 3));
 
-        case DDC_BYTE:  return !memcmp (static_cast <QVector <char>  *> (array1)->data (),
-                                        static_cast <QVector <char>  *> (array2)->data (), static_cast <size_t> (len));
+        case DDC_BYTE:  return !memcmp (static_cast <const QVector <char>   *> (array1)->data (),
+                                        static_cast       <QVector <char>   *> (array2)->data (), static_cast <size_t> (len));
 
-        case DDC_SHORT: return !memcmp (static_cast <QVector <short> *> (array1)->data (),
-                                        static_cast <QVector <short> *> (array2)->data (), static_cast <size_t> (len));
+        case DDC_SHORT: return !memcmp (static_cast <const QVector <short>  *> (array1)->data (),
+                                        static_cast       <QVector <short>  *> (array2)->data (), static_cast <size_t> (len << 1));
         case DDC_FLOAT:
-        case DDC_INT:   return !memcmp (static_cast <QVector <int>   *> (array1)->data (),
-                                        static_cast <QVector <int>   *> (array2)->data (), static_cast <size_t> (len));
         case DDC_TIME:
-
-            for (int i = 0; i < len; i++)
-                if (static_cast <QVector <QTime> *> (array1)->data () [i]  !=
-                    static_cast <QVector <QTime> *> (array1)->data () [i]) return false;
-
-            return true;
-
         case DDC_DATE:
-
-            for (int i = 0; i < len; i++)
-                if (static_cast <QVector <QDate> *> (array1)->data () [i]  !=
-                    static_cast <QVector <QDate> *> (array2)->data () [i]) return false;
-
-            return true;
-
-        case DDC_DATETIME:
-
-            for (int i = 0; i < len; i++)
-                if (static_cast <QVector <QDateTime> *> (array1)->data () [i]  !=
-                    static_cast <QVector <QDateTime> *> (array2)->data () [i]) return false;
-
-            return true;
-
+        case DDC_INT:   return !memcmp (static_cast <const QVector <int> *> (array1)->data (),
+                                        static_cast       <QVector <int> *> (array2)->data (), static_cast <size_t> (len << 2));
         case DDC_BYTES:
 
             for (int i = 0; i < len; i++)
-                if (static_cast <QVector <QByteArray> *> (array1)->data () [i]  !=
-                    static_cast <QVector <QByteArray> *> (array2)->data () [i]) return false;
+                if (static_cast <const QVector <QByteArray> *> (array1)->data () [i]  !=
+                    static_cast       <QVector <QByteArray> *> (array2)->data () [i]) return false;
 
             return true;
 
         case DDC_STRING:
 
             for (int i = 0; i < len; i++)
-                if (static_cast <QVector <QString> *> (array1)->data () [i]  !=
-                    static_cast <QVector <QString> *> (array2)->data () [i]) return false;
+                if (static_cast <const QVector <QString> *> (array1)->data () [i]  !=
+                    static_cast       <QVector <QString> *> (array2)->data () [i]) return false;
 
             return true;
     }
+}
+
+//  +-------------+
+//  | compareList |
+//  +-------------+
+
+bool DDManager::compareList (DDList *list1, DDList *list2)
+{
+    if (list1->getDataNumber () != static_cast <DDList *> (list2)->getDataNumber ()) return false;
+
+    void *obj1, *obj2;
+    int   i,     j;
+
+    list1->begin ();
+    list2->begin ();
+
+    while (!list1->isEndOfList ())
+    {
+        obj1 = list1->getData (-1);
+        obj2 = list2->getData (-1);
+        i    = list1->getCurrentDataType ();
+        j    = list2->getCurrentDataType ();
+
+        list1->next ();
+        list2->next ();
+
+        if (i == DDC_NULL || j == DDC_NULL)
+        {
+            if (!obj1 && !obj2) continue;
+            else return false;
+        }
+
+        if (i != j) return false;
+
+        switch (i & 0x0F)
+        {
+            default:         if ( reinterpret_cast <qint64> (obj1)  ==
+                                  reinterpret_cast <qint64> (obj2)) continue; else return false;    // long, double, number, s_number, datetime
+
+            case DDC_BYTE:   if ( static_cast <char>  (reinterpret_cast <qint64> (obj1))  ==
+                                  static_cast <char>  (reinterpret_cast <qint64> (obj2))) continue; else return false;
+
+            case DDC_SHORT:  if ( static_cast <short> (reinterpret_cast <qint64> (obj1))  ==
+                                  static_cast <short> (reinterpret_cast <qint64> (obj2))) continue; else return false;
+            case DDC_FLOAT:
+            case DDC_TIME:
+            case DDC_DATE:
+            case DDC_INT:    if ( static_cast <int>   (reinterpret_cast <qint64> (obj1))  ==
+                                  static_cast <int>   (reinterpret_cast <qint64> (obj2))) continue; else return false;
+
+            case DDC_BYTES:  if (*static_cast <QByteArray *> (obj1)  ==
+                                 *static_cast <QByteArray *> (obj2)) continue; else return false;
+
+            case DDC_STRING: if (*static_cast <QString    *> (obj1)  ==
+                                 *static_cast <QString    *> (obj2)) continue; else return false;
+
+            case DDC_ARRAY:  if (!compareArray (i, obj1, obj2)) return false;
+        }
+    }
+
+    return true;
 }
 
 //  #========#
@@ -930,19 +921,21 @@ void DDManager::decode (QByteArray &buffer, int offset, int length, bool checkPr
     if (offset < 0 || length < 0 || offset + length > buffer.size ())
         DDException (DDE_INVALID_DECODE_ARGUMENT, offset, length);
 
-    DDBuffer ddb = DDBuffer (&buffer, offset, length, &newObjectList);
+    DDBuffer ddBuffer = DDBuffer (buffer, offset, length, &newObjectList);
 
-    if (checkProtocolInfo) ddb.checkProtocolInfo ();
-    if (checkCRC32)        ddb.checkCRC32        ();
+    if (checkProtocolInfo) ddBuffer.checkProtocolInfo ();
+    if (checkCRC32)        ddBuffer.checkCRC32        ();
 
-    char type;
-    int  id;
+    int   id, type;
+    void *obj;
 
-    while (!ddb.endOfBuffer ())
+    while (!ddBuffer.endOfBuffer ())
     {
-        id   = ddb.readTypeAndId ();
-        type = static_cast <char> ((id >> 12) & 0x0F);
-        storeData (id & 0xFFF, ddb.read (type), type);
+        id   =  ddBuffer.readTypeAndId ();
+        type = (id >> 12) & 0x0F;
+
+        obj = ddBuffer.read (type);
+        storeData (id & 0xFFF, obj, type);
     }
 }
 
@@ -950,7 +943,7 @@ void DDManager::decode (QByteArray &buffer, int offset, int length, bool checkPr
 //  | linkObject |
 //  +------------+
 
-void **DDManager::linkObject (int id, void **obj)
+const void **DDManager::linkObject (int id, void **obj)
 {
     int idx = id >> 8;
     if (!(obj [idx])) {obj [idx] = new void * [16] (); addNew (obj [idx]);}
@@ -959,7 +952,7 @@ void **DDManager::linkObject (int id, void **obj)
     idx = (id >> 4) & 0x0F;
 
     if (!(obj [idx])) {obj [idx] = new void * [16] (); addNew (obj [idx]);}
-    return static_cast <void **> (obj [idx]);
+    return static_cast <const void **> (obj [idx]);
 }
 
 //  +------------+
@@ -978,7 +971,7 @@ void *DDManager::seekObject (int id, void **obj)
 //  | storeData |
 //  +-----------+
 
-void DDManager::storeData (int id, void *data, int type)
+void DDManager::storeData (int id, const void *data, int type)
 {
     if (dataTypes [id] != DDC_NULL) DDException (DDE_DATA_ALREADY_PRESENT, id);
 
@@ -986,12 +979,12 @@ void DDManager::storeData (int id, void *data, int type)
     {
         DDProps *props = static_cast <DDProps *> (seekObject (id, propertiesRoot));
         if (props && props->def && !(props->operType & DDC_REQ) &&
-            checkDataDefault (type, data, props->def)) return;                         // Default
+            compareData (type, data, props->def)) return;             // Default
     }
 
     dataTypes  [id] = static_cast <unsigned char> (type);
     linkObject (id, dataRoot) [id & 0x0F] = data;
-    dataCount++;
+    dataNumber++;
 }
 
 //  #========#
@@ -1022,7 +1015,7 @@ void DDManager::encode (QByteArray &buffer, int reservedSizeBefore, int reserved
         DDException (DDE_INVALID_ENCODE_ARGUMENT, reservedSizeBefore, reservedSizeAfter);
 
     QByteArray tempBuffer (4096, 0);
-    DDBuffer   ddBuffer   (&tempBuffer, 0, 4096, &newObjectList);
+    DDBuffer   ddBuffer   (tempBuffer, 0, 4096, &newObjectList);
 
     if (addProtocolInfo) ddBuffer.addProtocolInfo ();
 
@@ -1031,9 +1024,9 @@ void DDManager::encode (QByteArray &buffer, int reservedSizeBefore, int reserved
     void              **objTable1, **objTable2;
     QVector <DDProps>  *propsTable;
     DDList             *list;
-    DDProps             p;
+    DDProps            *p;
 
-    if (propertiesCount)
+    if (propertiesNumber)
         for (i = 0; i < 16; i++)    // Check Required Flag
         {
             if (!(objTable1 = static_cast <void **> (propertiesRoot [i]))) continue;
@@ -1050,25 +1043,26 @@ void DDManager::encode (QByteArray &buffer, int reservedSizeBefore, int reserved
                     if ((static_cast <DDProps *> (data)->operType & DDC_REQ) > 0 && dataTypes [x] == DDC_NULL)
                          DDException (DDE_MISSING_DATA, x, static_cast <DDProps *> (data)->name);
 
-                    if (dataTypes [x] != DDC_LIST || !(propsTable = static_cast <QVector <DDProps> *> (static_cast <DDProps *> (data)->inOrProps)))
-                        continue;
+                    if (dataTypes [x] != DDC_LIST)  continue;
+                    list = static_cast  <DDList *> (seekObject (x, dataRoot));
 
-                    list = static_cast <DDList *> (seekObject (x, dataRoot));
-                    x    = propsTable->size ();
+                    propsTable = list->getProperties ();
+                    if (!propsTable) DDException (DDE_LIST_PROPERTIES_NOT_FOUND, static_cast <DDProps *> (data)->id);
 
+                    x = propsTable->size ();
                     list->begin ();
 
                     while (!list->isEndOfList ())
                     {
-                        p = propsTable->data () [list->getCurrentDataId () % x];
+                        p = &propsTable->data () [list->getCurrentDataOffset () % x];
 
-                        if ((p.operType & DDC_REQ) != 0 && list->getCurrentDataType () == DDC_NULL)
-                             DDException (DDE_MISSING_DATA, p.id, p.name);
+                        if ((p->operType & DDC_REQ) != 0 && list->getCurrentDataType () == DDC_NULL)
+                             DDException (DDE_MISSING_DATA, p->id, p->name);
 
                         list->next ();
                     }
 
-                    for (x = list->getDataCount (); x < propsTable->size (); x++)
+                    for (x = list->getDataNumber (); x < propsTable->size (); x++)
                         if ((propsTable->data () [x].operType & DDC_REQ) != 0)
                              DDException (DDE_MISSING_DATA, propsTable->data () [x].id, propsTable->data () [x].name);
                 }
@@ -1114,7 +1108,98 @@ void DDManager::encode (QByteArray &buffer, int reservedSizeBefore, int reserved
     int offset  =  ddBuffer.getOffset ();
     buffer.resize (offset + reservedSizeBefore + reservedSizeAfter);
 
-    if (offset > 0) memcpy (buffer.data () + reservedSizeBefore, ddBuffer.getBuffer ()->data (), static_cast <size_t> (offset));
+    if (offset) memcpy (buffer.data () + reservedSizeBefore, ddBuffer.getBuffer (), static_cast <size_t> (offset));
+}
+
+//  #=====================#
+//  # Date Time Utilities #
+//  #=====================#
+
+int DDManager::getYear   (int date) {return  date /    10000; }
+int DDManager::getMonth  (int date) {return (date /      100) %  100;}
+int DDManager::getDay    (int date) {return  date             %  100;}
+int DDManager::getHour   (int time) {return  time / 10000000; }
+int DDManager::getMinute (int time) {return (time /   100000) %  100;}
+int DDManager::getSecond (int time) {return (time /     1000) %  100;}
+int DDManager::getMSec   (int time) {return  time             % 1000;}
+
+int DDManager::getYear   (qint64 datetime) {return getYear   (static_cast <int> (datetime / 1000000000));}
+int DDManager::getMonth  (qint64 datetime) {return getMonth  (static_cast <int> (datetime / 1000000000));}
+int DDManager::getDay    (qint64 datetime) {return getDay    (static_cast <int> (datetime / 1000000000));}
+int DDManager::getHour   (qint64 datetime) {return getHour   (static_cast <int> (datetime % 1000000000));}
+int DDManager::getMinute (qint64 datetime) {return getMinute (static_cast <int> (datetime % 1000000000));}
+int DDManager::getSecond (qint64 datetime) {return getSecond (static_cast <int> (datetime % 1000000000));}
+int DDManager::getMSec   (qint64 datetime) {return getMSec   (static_cast <int> (datetime % 1000000000));}
+
+int DDManager::getTime (int hour, int minute, int second, int msec)
+{
+    if (msec >= 0 && msec <= 1000 && second >= 0 && second < 60 && minute >= 0 && minute < 60 && hour >= 0 && hour < 24)
+        return ((hour * 100 + minute) * 100 + second) * 1000 + msec;
+
+    return -1;
+}
+
+int DDManager::getDate (int year, int month, int day)
+{
+    if (year && (year < 0 ? -year - 1 : year) <= 214747 && month > 0 && month <= 12 && day > 0 &&
+       (day <= DDBuffer::MONTH_DAYS [month - 1] || (month == 2 && day == 29 && isLeapYear (year))))
+            return (year * 100 + month) * 100 + day;
+
+    return -1;
+}
+
+qint64 DDManager::getDateTime (int year, int month, int day, int hour, int minute, int second, int msec)
+{
+    if (msec >= 0 && msec <= 1000 && second >= 0 && second < 60 && minute >= 0 && minute < 60 && hour >= 0 && hour < 24 &&
+        year && (year < 0 ? -year - 1 : year) <= 214747 && month > 0 && month <= 12 && day > 0 &&
+       (day <= DDBuffer::MONTH_DAYS [month - 1] || (month == 2 && day == 29 && isLeapYear (year))))
+            return (((((year * 100 + month) * 100 + day) * 100 + hour) * 100 + minute) * 100 + second) * 1000 + msec;
+
+    return -1;
+}
+
+int DDManager::getTime (const QTime &time)
+    {return ((time.hour () * 100 + time.minute ()) * 100 + time.second ()) * 1000 + time.msec ();}
+
+int DDManager::getDate (const QDate &date)
+    {return (date.year () * 100 + date.month ()) * 100 + date.day ();}
+
+qint64 DDManager::getDateTime (const QDateTime &datetime)
+{
+    QTime t = datetime.time ();
+    QDate d = datetime.date ();
+
+    return (((((d.year ()  * 100 + d.month  ()) * 100 + d.day    ()) * 100  +
+                t.hour ()) * 100 + t.minute ()) * 100 + t.second ()) * 1000 + t.msec ();
+}
+
+QTime DDManager::getQTime (int time)
+{
+    int ms  = time % 1000;    time /= 1000;
+    int sec = time % 100;     time /= 100;
+    int min = time % 100;     time /= 100;
+
+    return QTime (time, min, sec, ms);
+}
+
+QDate DDManager::getQDate (int date)
+{
+    int day = date % 100;    date /= 100;
+    int mon = date % 100;    date /= 100;
+
+    return QDate (date, mon, day);
+}
+
+QDateTime DDManager::getQDateTime (qint64 datetime)
+{
+    int ms   = datetime % 1000;    datetime /= 1000;
+    int sec  = datetime % 100;     datetime /= 100;
+    int min  = datetime % 100;     datetime /= 100;
+    int hour = datetime % 100;     datetime /= 100;
+    int day  = datetime % 100;     datetime /= 100;
+    int mon  = datetime % 100;     datetime /= 100;
+
+    return QDateTime (QDate (static_cast <int> (datetime), mon, day), QTime (hour, min, sec, ms));
 }
 
 //  #==========#
@@ -1130,7 +1215,7 @@ QString DDManager::toString ()
     void     *data;
     int       i, j, k, x;
 
-    QTextStream (&str) << dataCount << '{';
+    QTextStream (&str) << dataNumber << '{';
 
     for (i = 0; i < 16; i++)
     {
@@ -1152,7 +1237,7 @@ QString DDManager::toString ()
                 if ((props = static_cast <DDProps *> (seekObject (x, propertiesRoot)))) QTextStream (&str) << props->name << '@';
 
                 QTextStream (&str) << x << '=' << DDBuffer::DATA_TYPES [dataTypes [x] & 0x0F];
-                DDBuffer::stringData (&str, data, dataTypes [x], props);
+                DDBuffer::stringData (&str, data, dataTypes [x]);
             }
         }
     }

@@ -2,6 +2,7 @@
 //  # Dynamic Data Node - Version 1.0.0 #
 //  #                                   #
 //  # Author: Marco Vagnoni             #
+//  # Email:  marco.vagnoni@yahoo.com   #
 //  # Date:   April     2019 (v1.0.0)   #
 //  #===================================#
 
@@ -12,9 +13,9 @@ class DDNode
 {
 public:
 
-    DDNode (int id, void *object, int type);
+    DDNode (int offset, void *object, int type);
 
-    int     getId     ();
+    int     getOffset ();
     DDNode *getNext   ();
     void   *getObject ();
     int     getType   ();
@@ -26,7 +27,7 @@ private:
     DDNode *next;
     void   *object;
     int     type;
-    int     id;
+    int     offset;
 };
 
 #endif    // DDNODE_H

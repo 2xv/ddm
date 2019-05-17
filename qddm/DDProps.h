@@ -2,6 +2,7 @@
 //  # Dynamic Data Properties - Version 1.0.0 #
 //  #                                         #
 //  # Author: Marco Vagnoni                   #
+//  # Email:  marco.vagnoni@yahoo.com         #
 //  # Date:   April     2019 (v1.0.0)         #
 //  #=========================================#
 
@@ -20,7 +21,7 @@ struct DDProps
     int            number;
     int            operType;
     void          *def;
-    void          *inOrProps;
+    void          *in;
 
     QString        toString           ();
     QString        toStringDataOnly   ();

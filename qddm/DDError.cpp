@@ -2,10 +2,12 @@
 //  # Dynamic Data Error - Version 1.0.0 #
 //  #                                    #
 //  # Author: Marco Vagnoni              #
+//  # Email:  marco.vagnoni@yahoo.com    #
 //  # Date:   April     2019 (v1.0.0)    #
 //  #====================================#
 
 #include <cstring>
+
 #include "DDError.h"
 
 const char *DDError::extractName (const char *path)

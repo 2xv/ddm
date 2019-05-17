@@ -2,20 +2,21 @@
 //  # Dynamic Data Node - Version 1.0.0 #
 //  #                                   #
 //  # Author: Marco Vagnoni             #
+//  # Email:  marco.vagnoni@yahoo.com   #
 //  # Date:   April     2019 (v1.0.0)   #
 //  #===================================#
 
 #include "DDNode.h"
 
-DDNode::DDNode (int id, void *object, int type)
+DDNode::DDNode (int offset, void *object, int type)
 {
-    this->id     = id;
+    this->offset = offset;
     this->object = object;
     this->type   = type;
     next         = nullptr;
 }
 
-int     DDNode::getId     () {return id;}
+int     DDNode::getOffset () {return offset;}
 DDNode *DDNode::getNext   () {return next;}
 void   *DDNode::getObject () {return object;}
 int     DDNode::getType   () {return type;}

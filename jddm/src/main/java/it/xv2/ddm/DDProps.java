@@ -2,6 +2,7 @@
 //  # Dynamic Data Properties - Version 1.0.0 #
 //  #                                         #
 //  # Author: Marco Vagnoni                   #
+//  # Email:  marco.vagnoni@yahoo.com         #
 //  # Date:   April     2019 (v1.0.0)         #
 //  #=========================================#
 
@@ -16,9 +17,9 @@ public final class DDProps
     public final int    number;
     public final int    operType;
     public final Object def;
-    public final Object inOrProps;
+    public final Object in;
 
-    public DDProps (String name, int id, long min, long max, int number, int operType, Object def, Object inOrProps)
+    public DDProps (String name, int id, long min, long max, int number, int operType, Object def, Object in)
     {
         this.name      = name;
         this.id        = id;
@@ -27,7 +28,7 @@ public final class DDProps
         this.number    = number;
         this.operType  = operType;
         this.def       = def;
-        this.inOrProps = inOrProps;
+        this.in        = in;
     }
 
     @Override
@@ -40,14 +41,14 @@ public final class DDProps
                     ", number="   + number +
                   ", operType=0x" + Integer.toHexString (operType) +
                    ", default="   + def +
-                 ", inOrProps="   + inOrProps + '}';
+                        ", in="   + in + '}';
     }
 
-    public static String toStringHeaderOnly () {return "\nDDProps {name, id, min, max, number, operType, default, inOrProps}";}
+    public static String toStringHeaderOnly () {return "\nDDProps {name, id, min, max, number, operType, default, in}";}
 
     public String toStringDataOnly ()
     {
         return "\n"   + name + ", " + id + ", " + min  + ", " + max + ", " + number +
-               ", 0x" + Integer.toHexString (operType) + ", " + def + ", " + inOrProps;
+               ", 0x" + Integer.toHexString (operType) + ", " + def + ", " + in;
     }
 }
