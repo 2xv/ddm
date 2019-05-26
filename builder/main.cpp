@@ -708,7 +708,7 @@ int main (int argc, char **argv)
 
         for (c_work = c_first; c_work; c_work = c_work->next) fprintf (fj, "// %s\n", c_work->row);
 
-        fprintf (fj, "\npackage %s\n\n"
+        fprintf (fj, "\npackage %s;\n\n"
                      "import it.xv2.ddm.DDConst;\n"
                      "import it.xv2.ddm.DDProps;\n\n"
                      "public final class %s\n{\n", (package ? package : "..."), entity);

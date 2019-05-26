@@ -220,6 +220,22 @@ bool DDManager::isDataPresent (int id)
     return   dataTypes [id] != DDC_NULL   || (dataDefault &&  props && props->def);
 }
 
+//  #===============#
+//  # addProperties #
+//  #===============#
+
+void DDManager::addProperties (DDProps &properties)
+{
+    const void **propsTable = linkObject (properties.id, propertiesRoot);
+    if (propsTable [properties.id & 0x0F]) DDException (DDE_PROPERTIES_ALREADY_PRESENT, properties.id);
+
+    propsTable [properties.id & 0x0F] = &properties;
+    propertiesNumber++;
+}
+
+void DDManager::addProperties (QVector <DDProps> &properties)
+    {for (int i = 0; i < properties.size (); i++) addProperties (properties [i]);}
+
 //  #=====#
 //  # set #
 //  #=====#
@@ -324,22 +340,6 @@ void DDManager::setData (int id, const void *data, int type)
     if (id < 0 || id > 4095) DDException (DDE_INVALID_ID, id);
     storeData (id, data, type);
 }
-
-//  #===============#
-//  # setProperties #
-//  #===============#
-
-void DDManager::setProperties (DDProps &properties)
-{
-    const void **propsTable = linkObject (properties.id, propertiesRoot);
-    if (propsTable [properties.id & 0x0F]) DDException (DDE_PROPERTIES_ALREADY_PRESENT, properties.id);
-
-    propsTable [properties.id & 0x0F] = &properties;
-    propertiesNumber++;
-}
-
-void DDManager::setProperties (QVector <DDProps> &properties)
-    {for (int i = 0; i < properties.size (); i++) setProperties (properties [i]);}
 
 //  #===================#
 //  # setListProperties #

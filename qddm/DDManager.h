@@ -70,6 +70,9 @@ public:
     bool                   isDataDefault        ();
     bool                   isDataPresent        (int id);
 
+    void                   addProperties        (DDProps &properties);
+    void                   addProperties        (QVector <DDProps> &properties);
+
     void                   setDataCheck         (bool dataCheck);
     void                   setDataDefault       (bool dataDefault);
 
@@ -102,9 +105,7 @@ public:
     void                   setBytesArray        (int id, const  QVector <QByteArray> &data);
     void                   setStringArray       (int id, const  QVector <QString>    &data);
 
-    void                   setProperties        (DDProps &properties);
-    void                   setProperties        (QVector <DDProps> &properties);
-    void                   setListProperties    (int id,  QVector <DDProps> &properties);
+    void                   setListProperties    (int id, QVector <DDProps> &properties);
 
     void                   decode               (QByteArray &buffer);
     void                   decode               (QByteArray &buffer, int  offset);

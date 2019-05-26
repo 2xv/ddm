@@ -3,7 +3,7 @@
 
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>it.xv2</groupId>
+    <groupId>it.xv2.ddm</groupId>
     <artifactId>jddm</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>

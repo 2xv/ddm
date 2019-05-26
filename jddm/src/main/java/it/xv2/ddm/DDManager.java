@@ -167,6 +167,26 @@ public final class DDManager
         return  dataTypes [id] != DDConst.NULL || (dataDefault && props != null && props.def != null);
     }
 
+//  #===============#
+//  # addProperties #
+//  #===============#
+
+    public void addProperties (DDProps properties) throws DDException
+    {
+        if (properties == null) throw new DDException (DDError.PROPERTIES_IS_NULL.getMessage ());
+
+        Object [] propsTable = linkObject (properties.id, propertiesRoot);
+
+        if (propsTable [properties.id & 0x0F] != null)
+            throw new DDException (DDError.PROPERTIES_ALREADY_PRESENT.getMessage (properties.id));
+
+        propsTable [properties.id & 0x0F] = properties;
+        propertiesNumber++;
+    }
+
+    public void addProperties (DDProps [] properties) throws DDException
+        {for (DDProps props : properties) addProperties (props);}
+
 //  #=====#
 //  # set #
 //  #=====#
@@ -264,26 +284,6 @@ public final class DDManager
         if (data == null) throw new DDException (DDError.DATA_IS_NULL.getMessage (id));
         storeData (id, data, type);
     }
-
-//  #===============#
-//  # setProperties #
-//  #===============#
-
-    public void setProperties (DDProps properties) throws DDException
-    {
-        if (properties == null) throw new DDException (DDError.PROPERTIES_IS_NULL.getMessage ());
-
-        Object [] propsTable = linkObject (properties.id, propertiesRoot);
-
-        if (propsTable [properties.id & 0x0F] != null)
-            throw new DDException (DDError.PROPERTIES_ALREADY_PRESENT.getMessage (properties.id));
-
-        propsTable [properties.id & 0x0F] = properties;
-        propertiesNumber++;
-    }
-
-    public void setProperties (DDProps [] properties) throws DDException
-        {for (DDProps props : properties) setProperties (props);}
 
 //  #===================#
 //  # setListProperties #
