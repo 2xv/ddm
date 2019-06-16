@@ -57,7 +57,7 @@ public enum DDError
     {
         StackTraceElement stackInfo = Thread.currentThread ().getStackTrace () [3];
         return stackInfo.getMethodName () + " (" +
-               stackInfo.getFileName   () + '@' +
+               stackInfo.getFileName   () + ':' +
                stackInfo.getLineNumber () + ") ";
     }
 }
